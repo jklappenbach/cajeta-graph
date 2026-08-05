@@ -1,0 +1,17 @@
+package dev.cajeta.graph;
+
+import cajeta.error.RecoverableException;
+import cajeta.lang.String;
+
+/**
+ * Thrown by `dev.cajeta.graph` on contract violations that are normal,
+ * caller-handleable conditions: an unknown node identity, a missing edge or
+ * edge attribute, a negative weight handed to Dijkstra
+ * (`cajeta.nucleo.sparse.SparseException`'s discipline).
+ */
+public class GraphException extends RecoverableException {
+    public GraphException(String message) {
+        this.message = message;
+        this.cause = 0;
+    }
+}

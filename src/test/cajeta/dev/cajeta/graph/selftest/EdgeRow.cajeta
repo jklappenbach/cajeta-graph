@@ -1,0 +1,12 @@
+package dev.cajeta.graph.selftest;
+
+/**
+ * Edge-list schema for the Table-construction tests: srcId, dstId, weight.
+ * (Not `src`/`dst` — `Table` itself owns a `src` member, and the per-column
+ * accessor synthesis refuses to shadow it.)
+ */
+public record EdgeRow {
+    Utf8 srcId;
+    Utf8 dstId;
+    float64 w;
+}

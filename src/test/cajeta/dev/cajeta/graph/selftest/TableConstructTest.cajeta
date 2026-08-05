@@ -1,0 +1,60 @@
+package dev.cajeta.graph.selftest;
+
+import dev.cajeta.unit.Assert;
+import dev.cajeta.graph.Graph;
+import cajeta.collection.ArrayList;
+import cajeta.nucleo.frame.Table;
+import cajeta.nucleo.column.Column;
+import cajeta.nucleo.column.StringColumn;
+
+/**
+ * ml-graph-analytics plan 1.1.2 — construction from an edge-list Table
+ * naming source and target columns, with remaining columns optionally
+ * attached as edge attributes (spec §2.3) — NetworkX's
+ * `from_pandas_edgelist` shape.
+ */
+public class TableConstructTest {
+
+    public TableConstructTest() { return; }
+
+    /** 4 edges: a-b (1.5), b-c (2.0), c-a (0.5), c-d (3.0). */
+    static #Table<EdgeRow> edgeList() {
+        String[] sv = heap String[4];
+        sv[0] = "a"; sv[1] = "b"; sv[2] = "c"; sv[3] = "c";
+        String[] dv = heap String[4];
+        dv[0] = "b"; dv[1] = "c"; dv[2] = "a"; dv[3] = "d";
+        float64[] wv = heap float64[4];
+        wv[0] = 1.5; wv[1] = 2.0; wv[2] = 0.5; wv[3] = 3.0;
+        Table<EdgeRow> t = heap Table<EdgeRow>(
+            StringColumn.of(sv), StringColumn.of(dv),
+            Column.of<float64>(wv));
+        return #t;
+    }
+
+    @Test
+    public void fromTableBuildsTheGraph() {
+        Table<EdgeRow> t = TableConstructTest.edgeList();
+        Graph g = Graph.fromTable(t, "srcId", "dstId", false);
+        Assert.equals((int64) 4, g.nodeCount());
+        Assert.equals((int64) 4, g.edgeCount());
+        Assert.isTrue(g.hasEdge("a", "b"));
+        Assert.isTrue(g.hasEdge("c", "a"));       // undirected: either way
+        Assert.isTrue(g.hasEdge("d", "c"));
+        // No attribute columns requested: no weight attribute exists.
+        Assert.isFalse(g.hasEdgeAttr("a", "b", "w"));
+    }
+
+    @Test
+    public void fromTableAttachesNamedAttributeColumns() {
+        Table<EdgeRow> t = TableConstructTest.edgeList();
+        String[] attrs = heap String[1];
+        attrs[0] = "w";
+        Graph g = Graph.fromTableAttrs(t, "srcId", "dstId", true, attrs);
+        Assert.isTrue(g.isDirected());
+        Assert.equals((int64) 4, g.edgeCount());
+        Assert.isTrue(g.edgeAttr("a", "b", "w") == 1.5);
+        Assert.isTrue(g.edgeAttr("c", "d", "w") == 3.0);
+        // Directed: the reverse orientation does not exist.
+        Assert.isFalse(g.hasEdge("b", "a"));
+    }
+}
