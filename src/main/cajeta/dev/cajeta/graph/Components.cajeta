@@ -1,0 +1,192 @@
+package dev.cajeta.graph;
+
+/**
+ * Connectivity (spec §3.2). Every function returns an index-shaped label
+ * array: `labels[i]` is the component id of node index `i`, ids assigned
+ * in discovery order from node 0 — deterministic, so labels are stable
+ * fixtures. Directed graphs distinguish weakly connected (edges as if
+ * undirected) from strongly connected (mutually reachable; Kosaraju).
+ */
+public final class Components {
+
+    /** Connected components of an undirected graph. */
+    public static #int64[] connected(Graph g) {
+        if (g.isDirected()) {
+            throw heap GraphException(
+                "connected: directed graph — use weaklyConnected or "
+                + "stronglyConnected");
+        }
+        return Components.undirectedSweep(g);
+    }
+
+    /** Weakly connected components of a directed graph. */
+    public static #int64[] weaklyConnected(Graph g) {
+        return Components.undirectedSweep(g);
+    }
+
+    /** BFS sweep treating every edge as undirected. */
+    private static #int64[] undirectedSweep(Graph g) {
+        int64 n = g.nodeCount();
+        int64[] lab = heap int64[n];
+        int64 i = 0;
+        while (i < n) {
+            lab[i] = (int64) -1;
+            i = i + 1;
+        }
+        int64[] queue = heap int64[n];
+        int64 next = 0;
+        int64 root = 0;
+        while (root < n) {
+            if (lab[root] >= 0) {
+                root = root + 1;
+                continue;
+            }
+            lab[root] = next;
+            int64 head = 0;
+            int64 tail = 0;
+            queue[tail] = root;
+            tail = tail + 1;
+            while (head < tail) {
+                int64 u = queue[head];
+                head = head + 1;
+                // Out-edges…
+                int64 k = 0;
+                int64 kn = g.edgeCountAt(u);
+                while (k < kn) {
+                    int64 v = g.edgeOther(g.edgeAt(u, k), u);
+                    if (lab[v] < 0) {
+                        lab[v] = next;
+                        queue[tail] = v;
+                        tail = tail + 1;
+                    }
+                    k = k + 1;
+                }
+                // …and, for directed graphs, in-edges too (weak linkage).
+                if (g.isDirected()) {
+                    k = 0;
+                    kn = g.inEdgeCountAt(u);
+                    while (k < kn) {
+                        int64 v = g.edgeOther(g.inEdgeAt(u, k), u);
+                        if (lab[v] < 0) {
+                            lab[v] = next;
+                            queue[tail] = v;
+                            tail = tail + 1;
+                        }
+                        k = k + 1;
+                    }
+                }
+            }
+            next = next + 1;
+            root = root + 1;
+        }
+        return #lab;
+    }
+
+    /**
+     * Strongly connected components of a directed graph (Kosaraju: DFS
+     * finish order, then reverse-graph sweeps in reverse finish order).
+     */
+    public static #int64[] stronglyConnected(Graph g) {
+        if (!g.isDirected()) {
+            throw heap GraphException(
+                "stronglyConnected: undirected graph — use connected");
+        }
+        int64 n = g.nodeCount();
+        // Pass 1: iterative DFS on G collecting finish order.
+        int64[] finish = heap int64[n];
+        int64 fTop = 0;
+        boolean[] seen = heap boolean[n];
+        // Frame stack: node + progress cursor into its out-edges.
+        int64[] fNode = heap int64[n + (int64) 1];
+        int64[] fEdge = heap int64[n + (int64) 1];
+        int64 root = 0;
+        while (root < n) {
+            if (seen[root]) {
+                root = root + 1;
+                continue;
+            }
+            int64 top = 0;
+            fNode[top] = root;
+            fEdge[top] = 0;
+            top = top + 1;
+            seen[root] = true;
+            while (top > 0) {
+                int64 u = fNode[top - 1];
+                int64 k = fEdge[top - 1];
+                int64 kn = g.edgeCountAt(u);
+                boolean descended = false;
+                while (k < kn) {
+                    int64 v = g.edgeDst(g.edgeAt(u, k));
+                    k = k + 1;
+                    if (!seen[v]) {
+                        fEdge[top - 1] = k;
+                        seen[v] = true;
+                        fNode[top] = v;
+                        fEdge[top] = 0;
+                        top = top + 1;
+                        descended = true;
+                        break;
+                    }
+                }
+                if (!descended) {
+                    finish[fTop] = u;
+                    fTop = fTop + 1;
+                    top = top - 1;
+                }
+            }
+            root = root + 1;
+        }
+        // Pass 2: sweep the REVERSE graph in reverse finish order.
+        int64[] lab = heap int64[n];
+        int64 i = 0;
+        while (i < n) {
+            lab[i] = (int64) -1;
+            i = i + 1;
+        }
+        int64[] queue = heap int64[n];
+        int64 next = 0;
+        int64 fi = n - 1;
+        while (fi >= 0) {
+            int64 r = finish[fi];
+            fi = fi - 1;
+            if (lab[r] >= 0) {
+                continue;
+            }
+            lab[r] = next;
+            int64 head = 0;
+            int64 tail = 0;
+            queue[tail] = r;
+            tail = tail + 1;
+            while (head < tail) {
+                int64 u = queue[head];
+                head = head + 1;
+                int64 k = 0;
+                int64 kn = g.inEdgeCountAt(u);
+                while (k < kn) {
+                    int64 v = g.edgeSrc(g.inEdgeAt(u, k));
+                    if (lab[v] < 0) {
+                        lab[v] = next;
+                        queue[tail] = v;
+                        tail = tail + 1;
+                    }
+                    k = k + 1;
+                }
+            }
+            next = next + 1;
+        }
+        return #lab;
+    }
+
+    /** Number of distinct components in a label array. */
+    public static int64 componentCount(int64[] labels) {
+        int64 maxLab = (int64) -1;
+        int64 i = 0;
+        while (i < labels.count()) {
+            if (labels[i] > maxLab) {
+                maxLab = labels[i];
+            }
+            i = i + 1;
+        }
+        return maxLab + (int64) 1;
+    }
+}

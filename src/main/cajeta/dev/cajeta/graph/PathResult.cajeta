@@ -1,0 +1,41 @@
+package dev.cajeta.graph;
+
+import cajeta.collection.ArrayList;
+
+/**
+ * A single-pair shortest-path answer (spec §3.3, §3.5). Unreachability is
+ * an EXPLICIT state: `reachable()` is false, `distance()`/`path()` throw —
+ * never an infinite or zero distance the caller must interpret.
+ */
+public final class PathResult {
+
+    private boolean found;
+    private float64 dist;
+    private ArrayList<String> nodes;
+
+    public PathResult(boolean found, float64 dist, #ArrayList<String> nodes) {
+        this.found = found;
+        this.dist = dist;
+        this.nodes #= nodes;
+    }
+
+    public boolean reachable() {
+        return this.found;
+    }
+
+    /** Path length (hops for BFS, total weight for Dijkstra). */
+    public float64 distance() {
+        if (!this.found) {
+            throw heap GraphException("distance: target is unreachable");
+        }
+        return this.dist;
+    }
+
+    /** The node identities source..target (borrow). */
+    public ArrayList<String> path() {
+        if (!this.found) {
+            throw heap GraphException("path: target is unreachable");
+        }
+        return this.nodes;
+    }
+}

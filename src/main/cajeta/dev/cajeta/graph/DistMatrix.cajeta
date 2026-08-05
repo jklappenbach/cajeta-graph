@@ -1,0 +1,38 @@
+package dev.cajeta.graph;
+
+/**
+ * All-pairs shortest-path distances (spec §3.6), node-index shaped: an
+ * `n × n` row-major matrix in the graph's stable insertion-order indexing.
+ * Unreachability is EXPLICIT (`reachableAt`); reading an unreachable
+ * distance throws (§3.5). Complexity is documented at the producer
+ * (`ShortestPaths.allPairs`).
+ */
+public final class DistMatrix {
+
+    private int64 n;
+    /** Row-major distances; NaN encodes unreachable (internal only). */
+    private float64[] d;
+
+    public DistMatrix(int64 n, #float64[] d) {
+        this.n = n;
+        this.d #= d;
+    }
+
+    public int64 size() {
+        return this.n;
+    }
+
+    public boolean reachableAt(int64 i, int64 j) {
+        float64 x = this.d[i * this.n + j];
+        return x == x;
+    }
+
+    /** Distance i→j; throws when unreachable — never infinity. */
+    public float64 distAt(int64 i, int64 j) {
+        float64 x = this.d[i * this.n + j];
+        if (x != x) {
+            throw heap GraphException("distAt: unreachable pair");
+        }
+        return x;
+    }
+}

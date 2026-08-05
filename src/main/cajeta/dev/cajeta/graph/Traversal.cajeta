@@ -1,0 +1,90 @@
+package dev.cajeta.graph;
+
+import cajeta.collection.ArrayList;
+
+/**
+ * Traversal (spec §3.1). Visit orders are DETERMINISTIC and documented:
+ * neighbours are taken in edge-insertion order (the graph's adjacency
+ * order), BFS is FIFO over that order, DFS is preorder over it. Repeated
+ * runs on the same graph produce identical sequences — nothing downstream
+ * is reproducible without this.
+ */
+public final class Traversal {
+
+    /** Breadth-first visit order from `source` (identities). */
+    public static #ArrayList<String> bfs(Graph g, String source) {
+        int64 s = g.indexOf(source);
+        if (s < 0) {
+            throw heap GraphException("bfs: no such node");
+        }
+        int64 n = g.nodeCount();
+        boolean[] seen = heap boolean[n];
+        int64[] queue = heap int64[n];
+        int64 head = 0;
+        int64 tail = 0;
+        queue[tail] = s;
+        tail = tail + 1;
+        seen[s] = true;
+        ArrayList<String> out = heap ArrayList<String>();
+        while (head < tail) {
+            int64 u = queue[head];
+            head = head + 1;
+            String id = g.nodeAt(u);
+            String own = id.substring(0, (int32) id.count());
+            out.add(#own);
+            int64 k = 0;
+            int64 kn = g.edgeCountAt(u);
+            while (k < kn) {
+                int64 e = g.edgeAt(u, k);
+                int64 v = g.edgeOther(e, u);
+                if (!seen[v]) {
+                    seen[v] = true;
+                    queue[tail] = v;
+                    tail = tail + 1;
+                }
+                k = k + 1;
+            }
+        }
+        return #out;
+    }
+
+    /** Depth-first PREORDER from `source` (identities). */
+    public static #ArrayList<String> dfs(Graph g, String source) {
+        int64 s = g.indexOf(source);
+        if (s < 0) {
+            throw heap GraphException("dfs: no such node");
+        }
+        int64 n = g.nodeCount();
+        boolean[] seen = heap boolean[n];
+        // Iterative preorder: push neighbours in REVERSE insertion order so
+        // the first-inserted neighbour is explored first (recursive order).
+        int64[] stk = heap int64[n + g.edgeCount() * (int64) 2 + (int64) 1];
+        int64 top = 0;
+        stk[top] = s;
+        top = top + 1;
+        ArrayList<String> out = heap ArrayList<String>();
+        while (top > 0) {
+            top = top - 1;
+            int64 u = stk[top];
+            if (seen[u]) {
+                continue;
+            }
+            seen[u] = true;
+            String id = g.nodeAt(u);
+            String own = id.substring(0, (int32) id.count());
+            out.add(#own);
+            int64 kn = g.edgeCountAt(u);
+            int64 k = kn - 1;
+            while (k >= 0) {
+                int64 e = g.edgeAt(u, k);
+                int64 v = g.edgeOther(e, u);
+                if (!seen[v]) {
+                    stk[top] = v;
+                    top = top + 1;
+                }
+                k = k - 1;
+            }
+        }
+        return #out;
+    }
+}

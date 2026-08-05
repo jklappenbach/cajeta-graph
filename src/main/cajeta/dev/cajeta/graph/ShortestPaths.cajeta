@@ -1,0 +1,278 @@
+package dev.cajeta.graph;
+
+import cajeta.collection.ArrayList;
+
+/**
+ * Shortest paths (spec §3.3–§3.6). Unweighted queries run BFS; weighted
+ * queries run Dijkstra over a NAMED edge attribute (§2.4 — no implicit
+ * weight of 1), rejecting negative weights with the reason named (§3.4).
+ * Unreachable targets are explicit (`PathResult.reachable`,
+ * `DistMatrix.reachableAt`), never an infinite distance (§3.5).
+ *
+ * **Complexity (§3.6).** Dijkstra is the dense O(n²) scan form —
+ * deterministic and allocation-light; all-pairs is n single-source runs:
+ * O(n·(n+m)) unweighted, O(n³) weighted. This is the scaling wall the
+ * spec names; the measured ceiling is documented with plan U5.
+ */
+public final class ShortestPaths {
+
+    private static float64 nan() {
+        float64 z = 0.0;
+        return z / z;
+    }
+
+    /** Unweighted single-pair shortest path by BFS (§3.3). */
+    public static #PathResult bfsPath(Graph g, String src, String dst) {
+        int64 s = g.indexOf(src);
+        int64 t = g.indexOf(dst);
+        if (s < 0 || t < 0) {
+            throw heap GraphException("bfsPath: no such node");
+        }
+        int64 n = g.nodeCount();
+        int64[] prev = heap int64[n];
+        float64[] dist = heap float64[n];
+        int64 i = 0;
+        while (i < n) {
+            prev[i] = (int64) -1;
+            dist[i] = ShortestPaths.nan();
+            i = i + 1;
+        }
+        int64[] queue = heap int64[n];
+        int64 head = 0;
+        int64 tail = 0;
+        queue[tail] = s;
+        tail = tail + 1;
+        dist[s] = 0.0;
+        while (head < tail) {
+            int64 u = queue[head];
+            head = head + 1;
+            if (u == t) {
+                break;
+            }
+            int64 k = 0;
+            int64 kn = g.edgeCountAt(u);
+            while (k < kn) {
+                int64 v = g.edgeOther(g.edgeAt(u, k), u);
+                float64 dv = dist[v];
+                if (dv != dv) {
+                    dist[v] = dist[u] + 1.0;
+                    prev[v] = u;
+                    queue[tail] = v;
+                    tail = tail + 1;
+                }
+                k = k + 1;
+            }
+        }
+        return ShortestPaths.emit(g, s, t, dist, prev);
+    }
+
+    /**
+     * Weighted single-pair shortest path by Dijkstra over attribute
+     * `weightAttr` (§3.3). Throws on a negative weight (§3.4) or a missing
+     * attribute (§2.4).
+     */
+    public static #PathResult dijkstra(Graph g, String src, String dst,
+                                       String weightAttr) {
+        int64 s = g.indexOf(src);
+        int64 t = g.indexOf(dst);
+        if (s < 0 || t < 0) {
+            throw heap GraphException("dijkstra: no such node");
+        }
+        int64 n = g.nodeCount();
+        int64[] prev = heap int64[n];
+        float64[] dist = heap float64[n];
+        boolean[] done = heap boolean[n];
+        int64 i = 0;
+        while (i < n) {
+            prev[i] = (int64) -1;
+            dist[i] = ShortestPaths.nan();
+            i = i + 1;
+        }
+        dist[s] = 0.0;
+        while (true) {
+            // Dense scan: nearest unfinished reachable node.
+            int64 u = (int64) -1;
+            float64 best = 0.0;
+            i = 0;
+            while (i < n) {
+                float64 di = dist[i];
+                if (!done[i] && di == di) {
+                    if (u < 0 || di < best) {
+                        u = i;
+                        best = di;
+                    }
+                }
+                i = i + 1;
+            }
+            if (u < 0 || u == t) {
+                break;
+            }
+            done[u] = true;
+            int64 k = 0;
+            int64 kn = g.edgeCountAt(u);
+            while (k < kn) {
+                int64 e = g.edgeAt(u, k);
+                int64 v = g.edgeOther(e, u);
+                float64 w = g.edgeAttrByEid(e, weightAttr);
+                if (w < 0.0) {
+                    throw heap GraphException(
+                        "dijkstra: negative weight — Dijkstra's invariant "
+                        + "needs non-negative edge weights; use an "
+                        + "algorithm that admits them");
+                }
+                float64 cand = dist[u] + w;
+                float64 dv = dist[v];
+                if (dv != dv || cand < dv) {
+                    dist[v] = cand;
+                    prev[v] = u;
+                }
+                k = k + 1;
+            }
+        }
+        return ShortestPaths.emit(g, s, t, dist, prev);
+    }
+
+    /** Build the PathResult from a predecessor tree. */
+    private static #PathResult emit(Graph g, int64 s, int64 t,
+                                    float64[] dist, int64[] prev) {
+        float64 dt = dist[t];
+        if (dt != dt) {
+            ArrayList<String> empty = heap ArrayList<String>();
+            return #heap PathResult(false, 0.0, #empty);
+        }
+        // Walk t..s, then reverse into identities.
+        int64 len = 1;
+        int64 c = t;
+        while (c != s) {
+            c = prev[c];
+            len = len + 1;
+        }
+        int64[] chain = heap int64[len];
+        c = t;
+        int64 w = len - 1;
+        while (true) {
+            chain[w] = c;
+            if (c == s) {
+                break;
+            }
+            c = prev[c];
+            w = w - 1;
+        }
+        ArrayList<String> nodes = heap ArrayList<String>();
+        int64 i = 0;
+        while (i < len) {
+            String id = g.nodeAt(chain[i]);
+            String own = id.substring(0, (int32) id.count());
+            nodes.add(#own);
+            i = i + 1;
+        }
+        return #heap PathResult(true, dt, #nodes);
+    }
+
+    /**
+     * All-pairs unweighted distances: BFS from every node, O(n·(n+m))
+     * (§3.6 — the documented scaling wall; see plan U5 for the measured
+     * ceiling). Row-major in insertion-order indexing.
+     */
+    public static #DistMatrix allPairs(Graph g) {
+        int64 n = g.nodeCount();
+        float64[] d = heap float64[n * n];
+        int64 i = 0;
+        while (i < n * n) {
+            d[i] = ShortestPaths.nan();
+            i = i + 1;
+        }
+        int64[] queue = heap int64[n];
+        int64 s = 0;
+        while (s < n) {
+            int64 base = s * n;
+            d[base + s] = 0.0;
+            int64 head = 0;
+            int64 tail = 0;
+            queue[tail] = s;
+            tail = tail + 1;
+            while (head < tail) {
+                int64 u = queue[head];
+                head = head + 1;
+                int64 k = 0;
+                int64 kn = g.edgeCountAt(u);
+                while (k < kn) {
+                    int64 v = g.edgeOther(g.edgeAt(u, k), u);
+                    float64 dv = d[base + v];
+                    if (dv != dv) {
+                        d[base + v] = d[base + u] + 1.0;
+                        queue[tail] = v;
+                        tail = tail + 1;
+                    }
+                    k = k + 1;
+                }
+            }
+            s = s + 1;
+        }
+        return #heap DistMatrix(n, #d);
+    }
+
+    /**
+     * All-pairs weighted distances over `weightAttr`: Dijkstra from every
+     * node, O(n³) with the dense scan (§3.6). Negative weights rejected.
+     */
+    public static #DistMatrix allPairsWeighted(Graph g, String weightAttr) {
+        int64 n = g.nodeCount();
+        float64[] d = heap float64[n * n];
+        int64 z = 0;
+        while (z < n * n) {
+            d[z] = ShortestPaths.nan();
+            z = z + 1;
+        }
+        boolean[] done = heap boolean[n];
+        int64 s = 0;
+        while (s < n) {
+            int64 base = s * n;
+            int64 i = 0;
+            while (i < n) {
+                done[i] = false;
+                i = i + 1;
+            }
+            d[base + s] = 0.0;
+            while (true) {
+                int64 u = (int64) -1;
+                float64 best = 0.0;
+                i = 0;
+                while (i < n) {
+                    float64 di = d[base + i];
+                    if (!done[i] && di == di) {
+                        if (u < 0 || di < best) {
+                            u = i;
+                            best = di;
+                        }
+                    }
+                    i = i + 1;
+                }
+                if (u < 0) {
+                    break;
+                }
+                done[u] = true;
+                int64 k = 0;
+                int64 kn = g.edgeCountAt(u);
+                while (k < kn) {
+                    int64 e = g.edgeAt(u, k);
+                    int64 v = g.edgeOther(e, u);
+                    float64 w = g.edgeAttrByEid(e, weightAttr);
+                    if (w < 0.0) {
+                        throw heap GraphException(
+                            "allPairsWeighted: negative weight — Dijkstra "
+                            + "needs non-negative edge weights");
+                    }
+                    float64 cand = d[base + u] + w;
+                    float64 dv = d[base + v];
+                    if (dv != dv || cand < dv) {
+                        d[base + v] = cand;
+                    }
+                    k = k + 1;
+                }
+            }
+            s = s + 1;
+        }
+        return #heap DistMatrix(n, #d);
+    }
+}

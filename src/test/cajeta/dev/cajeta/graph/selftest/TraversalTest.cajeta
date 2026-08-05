@@ -1,0 +1,130 @@
+package dev.cajeta.graph.selftest;
+
+import dev.cajeta.unit.Assert;
+import dev.cajeta.graph.Graph;
+import dev.cajeta.graph.Traversal;
+import dev.cajeta.graph.Components;
+import cajeta.collection.ArrayList;
+
+/**
+ * ml-graph-analytics plan 2.1.1–2.1.2 — deterministic traversal and
+ * connectivity. Component structure pinned against NetworkX 3.6.1
+ * (tools/fixtures/gen_traversal.py); visit ORDERS are this library's own
+ * documented contract (edge-insertion neighbour order), asserted stable
+ * across repeated runs.
+ */
+public class TraversalTest {
+
+    public TraversalTest() { return; }
+
+    /** The tools/fixtures/gen_traversal.py weighted fixture, unweighted here. */
+    static #Graph fixture() {
+        Graph g = Graph.undirected();
+        g.addEdge("a", "b");
+        g.addEdge("b", "c");
+        g.addEdge("a", "d");
+        g.addEdge("b", "e");
+        g.addEdge("c", "f");
+        g.addEdge("d", "e");
+        g.addEdge("e", "f");
+        g.addEdge("f", "g");
+        g.addEdge("c", "g");
+        g.addNode("h");
+        return #g;
+    }
+
+    static void sameOrder(ArrayList<String> x, ArrayList<String> y) {
+        Assert.equals((int64) x.count(), (int64) y.count());
+        int32 i = 0;
+        while (i < x.count()) {
+            Assert.equals(x.get(i), y.get(i));
+            i = i + 1;
+        }
+    }
+
+    // 2.1.1 — BFS order is deterministic and documented: FIFO over
+    // edge-insertion neighbour order. Repeated runs agree exactly.
+    @Test
+    public void bfsOrderIsDeterministic() {
+        Graph g = TraversalTest.fixture();
+        ArrayList<String> o = Traversal.bfs(g, "a");
+        // a | b d | c e | f g   (h unreachable, excluded)
+        Assert.equals((int64) 7, (int64) o.count());
+        Assert.equals("a", o.get(0));
+        Assert.equals("b", o.get(1));
+        Assert.equals("d", o.get(2));
+        Assert.equals("c", o.get(3));
+        Assert.equals("e", o.get(4));
+        Assert.equals("f", o.get(5));
+        Assert.equals("g", o.get(6));
+        ArrayList<String> o2 = Traversal.bfs(g, "a");
+        TraversalTest.sameOrder(o, o2);
+    }
+
+    // 2.1.1 — DFS preorder, neighbours in edge-insertion order.
+    @Test
+    public void dfsOrderIsDeterministic() {
+        Graph g = TraversalTest.fixture();
+        ArrayList<String> o = Traversal.dfs(g, "a");
+        // a b c f e d g  (preorder; h unreachable)
+        Assert.equals((int64) 7, (int64) o.count());
+        Assert.equals("a", o.get(0));
+        Assert.equals("b", o.get(1));
+        Assert.equals("c", o.get(2));
+        Assert.equals("f", o.get(3));
+        Assert.equals("e", o.get(4));
+        Assert.equals("d", o.get(5));
+        Assert.equals("g", o.get(6));
+        ArrayList<String> o2 = Traversal.dfs(g, "a");
+        TraversalTest.sameOrder(o, o2);
+    }
+
+    // 2.1.2 — connected components on a disconnected undirected graph.
+    // Oracle: [['a','b','c'], ['d','e'], ['f']] (NetworkX 3.6.1).
+    @Test
+    public void connectedComponentsOnDisconnectedGraph() {
+        Graph g = Graph.undirected();
+        g.addEdge("a", "b");
+        g.addEdge("b", "c");
+        g.addEdge("d", "e");
+        g.addNode("f");
+        int64[] lab = Components.connected(g);
+        Assert.equals((int64) 3, Components.componentCount(lab));
+        // Same component ⇔ same label; labels are discovery-ordered.
+        Assert.equals(lab[g.indexOf("a")], lab[g.indexOf("b")]);
+        Assert.equals(lab[g.indexOf("b")], lab[g.indexOf("c")]);
+        Assert.equals(lab[g.indexOf("d")], lab[g.indexOf("e")]);
+        Assert.isTrue(lab[g.indexOf("a")] != lab[g.indexOf("d")]);
+        Assert.isTrue(lab[g.indexOf("a")] != lab[g.indexOf("f")]);
+        Assert.isTrue(lab[g.indexOf("d")] != lab[g.indexOf("f")]);
+        Assert.equals((int64) 0, lab[g.indexOf("a")]);
+        Assert.equals((int64) 1, lab[g.indexOf("d")]);
+        Assert.equals((int64) 2, lab[g.indexOf("f")]);
+    }
+
+    // 2.1.2 — weakly vs strongly connected on a directed graph.
+    // Oracle: weak [['q','w','x','y','z'], ['v']];
+    //         strong [['q'], ['v'], ['w'], ['x','y','z']] (NetworkX 3.6.1).
+    @Test
+    public void weakAndStrongComponentsAreDistinguished() {
+        Graph g = Graph.directed();
+        g.addEdge("x", "y");
+        g.addEdge("y", "z");
+        g.addEdge("z", "x");
+        g.addEdge("z", "w");
+        g.addEdge("w", "q");
+        g.addNode("v");
+        int64[] weak = Components.weaklyConnected(g);
+        Assert.equals((int64) 2, Components.componentCount(weak));
+        Assert.equals(weak[g.indexOf("x")], weak[g.indexOf("q")]);
+        Assert.isTrue(weak[g.indexOf("x")] != weak[g.indexOf("v")]);
+
+        int64[] strong = Components.stronglyConnected(g);
+        Assert.equals((int64) 4, Components.componentCount(strong));
+        Assert.equals(strong[g.indexOf("x")], strong[g.indexOf("y")]);
+        Assert.equals(strong[g.indexOf("y")], strong[g.indexOf("z")]);
+        Assert.isTrue(strong[g.indexOf("x")] != strong[g.indexOf("w")]);
+        Assert.isTrue(strong[g.indexOf("w")] != strong[g.indexOf("q")]);
+        Assert.isTrue(strong[g.indexOf("x")] != strong[g.indexOf("v")]);
+    }
+}

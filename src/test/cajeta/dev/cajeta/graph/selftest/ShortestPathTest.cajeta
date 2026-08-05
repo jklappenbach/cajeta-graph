@@ -1,0 +1,155 @@
+package dev.cajeta.graph.selftest;
+
+import dev.cajeta.unit.Assert;
+import dev.cajeta.graph.Graph;
+import dev.cajeta.graph.ShortestPaths;
+import dev.cajeta.graph.PathResult;
+import dev.cajeta.graph.DistMatrix;
+import cajeta.collection.ArrayList;
+
+/**
+ * ml-graph-analytics plan 2.1.3–2.1.7 — shortest paths, pinned against
+ * NetworkX 3.6.1 (tools/fixtures/gen_traversal.py):
+ *
+ *   dijkstra a->g: dist 4.0, path [a, b, c, g]
+ *   bfs a->g: 3 hops, path [a, b, c, g]
+ *   a->h: unreachable
+ *   all-pairs unweighted a-row (a..h): 0 1 2 1 2 3 3 –
+ *   all-pairs weighted   a-row (a..h): 0 1 3 4 5 6 4 –
+ */
+public class ShortestPathTest {
+
+    public ShortestPathTest() { return; }
+
+    /** The gen_traversal.py weighted fixture. */
+    static #Graph fixture() {
+        Graph g = Graph.undirected();
+        g.addEdge("a", "b");
+        g.setEdgeAttr("a", "b", "weight", 1.0);
+        g.addEdge("b", "c");
+        g.setEdgeAttr("b", "c", "weight", 2.0);
+        g.addEdge("a", "d");
+        g.setEdgeAttr("a", "d", "weight", 4.0);
+        g.addEdge("b", "e");
+        g.setEdgeAttr("b", "e", "weight", 7.0);
+        g.addEdge("c", "f");
+        g.setEdgeAttr("c", "f", "weight", 3.0);
+        g.addEdge("d", "e");
+        g.setEdgeAttr("d", "e", "weight", 1.0);
+        g.addEdge("e", "f");
+        g.setEdgeAttr("e", "f", "weight", 1.0);
+        g.addEdge("f", "g");
+        g.setEdgeAttr("f", "g", "weight", 9.0);
+        g.addEdge("c", "g");
+        g.setEdgeAttr("c", "g", "weight", 1.0);
+        g.addNode("h");
+        return #g;
+    }
+
+    static void samePath(PathResult r, String[] want) {
+        ArrayList<String> p = r.path();
+        Assert.equals((int64) want.count(), (int64) p.count());
+        int32 i = 0;
+        while (i < p.count()) {
+            Assert.equals(want[i], p.get(i));
+            i = i + 1;
+        }
+    }
+
+    // 2.1.3 — unweighted shortest path by BFS matches NetworkX.
+    @Test
+    public void bfsShortestPathMatchesNetworkX() {
+        Graph g = ShortestPathTest.fixture();
+        PathResult r = ShortestPaths.bfsPath(g, "a", "g");
+        Assert.isTrue(r.reachable());
+        Assert.isTrue(r.distance() == 3.0);
+        String[] want = heap String[4];
+        want[0] = "a"; want[1] = "b"; want[2] = "c"; want[3] = "g";
+        ShortestPathTest.samePath(r, want);
+    }
+
+    // 2.1.4 — weighted shortest path by Dijkstra matches NetworkX.
+    @Test
+    public void dijkstraMatchesNetworkX() {
+        Graph g = ShortestPathTest.fixture();
+        PathResult r = ShortestPaths.dijkstra(g, "a", "g", "weight");
+        Assert.isTrue(r.reachable());
+        Assert.isTrue(r.distance() == 4.0);
+        String[] want = heap String[4];
+        want[0] = "a"; want[1] = "b"; want[2] = "c"; want[3] = "g";
+        ShortestPathTest.samePath(r, want);
+    }
+
+    // 2.1.5 — a negative weight is REJECTED by Dijkstra with a clear
+    // message, never a silently wrong path.
+    @Test
+    public void negativeWeightIsRejected() {
+        Assert.assertThrows(() -> {
+            Graph g = Graph.undirected();
+            g.addEdge("a", "b");
+            g.setEdgeAttr("a", "b", "weight", -1.0);
+            PathResult r = ShortestPaths.dijkstra(g, "a", "b", "weight");
+        });
+    }
+
+    // §2.4 — weighted algorithms name WHICH attribute; a missing
+    // attribute is loud, never an implicit 1.
+    @Test
+    public void missingWeightAttributeIsLoud() {
+        Assert.assertThrows(() -> {
+            Graph g = Graph.undirected();
+            g.addEdge("a", "b");
+            PathResult r = ShortestPaths.dijkstra(g, "a", "b", "weight");
+        });
+    }
+
+    // 2.1.6 — an unreachable target is an explicit answer.
+    @Test
+    public void unreachableIsExplicitNotInfinite() {
+        Graph g = ShortestPathTest.fixture();
+        PathResult r = ShortestPaths.bfsPath(g, "a", "h");
+        Assert.isFalse(r.reachable());
+        Assert.assertThrows(() -> {
+            Graph g2 = ShortestPathTest.fixture();
+            PathResult r2 = ShortestPaths.bfsPath(g2, "a", "h");
+            float64 d = r2.distance();
+        });
+        PathResult rw = ShortestPaths.dijkstra(g, "a", "h", "weight");
+        Assert.isFalse(rw.reachable());
+    }
+
+    // 2.1.7 — all-pairs shortest paths match NetworkX (a-row + h-row).
+    @Test
+    public void allPairsMatchesNetworkX() {
+        Graph g = ShortestPathTest.fixture();
+        DistMatrix m = ShortestPaths.allPairs(g);
+        int64 a = g.indexOf("a");
+        // a-row hops (a b c d e f g): 0 1 2 1 2 3 3; h unreachable.
+        Assert.isTrue(m.distAt(a, g.indexOf("a")) == 0.0);
+        Assert.isTrue(m.distAt(a, g.indexOf("b")) == 1.0);
+        Assert.isTrue(m.distAt(a, g.indexOf("c")) == 2.0);
+        Assert.isTrue(m.distAt(a, g.indexOf("d")) == 1.0);
+        Assert.isTrue(m.distAt(a, g.indexOf("e")) == 2.0);
+        Assert.isTrue(m.distAt(a, g.indexOf("f")) == 3.0);
+        Assert.isTrue(m.distAt(a, g.indexOf("g")) == 3.0);
+        Assert.isFalse(m.reachableAt(a, g.indexOf("h")));
+        Assert.isFalse(m.reachableAt(g.indexOf("h"), a));
+        Assert.isTrue(m.distAt(g.indexOf("h"), g.indexOf("h")) == 0.0);
+    }
+
+    // 2.1.7 — weighted all-pairs (repeated Dijkstra) matches NetworkX.
+    @Test
+    public void allPairsWeightedMatchesNetworkX() {
+        Graph g = ShortestPathTest.fixture();
+        DistMatrix m = ShortestPaths.allPairsWeighted(g, "weight");
+        int64 a = g.indexOf("a");
+        // a-row (a b c d e f g): 0 1 3 4 5 6 4; h unreachable.
+        Assert.isTrue(m.distAt(a, g.indexOf("b")) == 1.0);
+        Assert.isTrue(m.distAt(a, g.indexOf("c")) == 3.0);
+        Assert.isTrue(m.distAt(a, g.indexOf("d")) == 4.0);
+        Assert.isTrue(m.distAt(a, g.indexOf("e")) == 5.0);
+        Assert.isTrue(m.distAt(a, g.indexOf("f")) == 6.0);
+        Assert.isTrue(m.distAt(a, g.indexOf("g")) == 4.0);
+        Assert.isFalse(m.reachableAt(a, g.indexOf("h")));
+    }
+}
