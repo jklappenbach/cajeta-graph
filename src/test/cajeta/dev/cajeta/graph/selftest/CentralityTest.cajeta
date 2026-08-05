@@ -1,0 +1,245 @@
+package dev.cajeta.graph.selftest;
+
+import dev.cajeta.unit.Assert;
+import dev.cajeta.graph.Graph;
+import dev.cajeta.graph.Centrality;
+
+/**
+ * ml-graph-analytics plan 3.1.1–3.1.3, 3.1.8–3.1.10 — the centrality
+ * family, pinned against NetworkX 3.6.1
+ * (tools/fixtures/gen_centrality.py). The star is the spec §9.2
+ * hand-checkable graph: every value below is verifiable by inspection.
+ */
+public class CentralityTest {
+
+    public CentralityTest() { return; }
+
+    static boolean near(float64 a, float64 b, float64 tol) {
+        float64 d = a - b;
+        if (d < 0.0) {
+            d = -d;
+        }
+        return d < tol;
+    }
+
+    /** Star: center s, leaves l1..l4. */
+    static #Graph star() {
+        Graph g = Graph.undirected();
+        g.addEdge("s", "l1");
+        g.addEdge("s", "l2");
+        g.addEdge("s", "l3");
+        g.addEdge("s", "l4");
+        return #g;
+    }
+
+    /** The gen_traversal.py fixture graph a..g (unweighted here). */
+    static #Graph gGraph() {
+        Graph g = Graph.undirected();
+        g.addEdge("a", "b");
+        g.addEdge("b", "c");
+        g.addEdge("a", "d");
+        g.addEdge("b", "e");
+        g.addEdge("c", "f");
+        g.addEdge("d", "e");
+        g.addEdge("e", "f");
+        g.addEdge("f", "g");
+        g.addEdge("c", "g");
+        return #g;
+    }
+
+    // 3.1.1 — degree centrality is degree/(n-1); directed variants exist
+    // and are named. Star: s = 1.0, leaves 0.25 (hand-checkable);
+    // dep graph in/out pinned vs NetworkX.
+    @Test
+    public void degreeCentralityIsDegreeOverNMinusOne() {
+        Graph g = CentralityTest.star();
+        float64[] c = Centrality.degree(g);
+        Assert.isTrue(c[g.indexOf("s")] == 1.0);
+        Assert.isTrue(c[g.indexOf("l1")] == 0.25);
+        Assert.isTrue(c[g.indexOf("l4")] == 0.25);
+
+        Graph d = Graph.directed();
+        d.addEdge("app", "lib1");
+        d.addEdge("app", "lib2");
+        d.addEdge("tool", "lib2");
+        d.addEdge("lib1", "util");
+        d.addEdge("lib2", "util");
+        float64[] ind = Centrality.inDegreeCentrality(d);
+        float64[] outd = Centrality.outDegreeCentrality(d);
+        // in  [app lib1 lib2 tool util] = 0 .25 .5 0 .5 (NetworkX)
+        Assert.isTrue(ind[d.indexOf("app")] == 0.0);
+        Assert.isTrue(ind[d.indexOf("lib1")] == 0.25);
+        Assert.isTrue(ind[d.indexOf("lib2")] == 0.5);
+        Assert.isTrue(ind[d.indexOf("util")] == 0.5);
+        // out = .5 .25 .25 .25 0
+        Assert.isTrue(outd[d.indexOf("app")] == 0.5);
+        Assert.isTrue(outd[d.indexOf("tool")] == 0.25);
+        Assert.isTrue(outd[d.indexOf("util")] == 0.0);
+    }
+
+    // 3.1.2 — eigenvector centrality by power iteration matches NetworkX
+    // at the same maxIter (100) and tol (1e-6).
+    @Test
+    public void eigenvectorMatchesNetworkX() {
+        Graph s = CentralityTest.star();
+        float64[] e = Centrality.eigenvector(s, (int64) 100, 0.000001);
+        // star: s 0.707106929, leaves 0.3535533167 (NetworkX 3.6.1)
+        Assert.isTrue(CentralityTest.near(e[s.indexOf("s")],
+            0.707106929, 0.00001));
+        Assert.isTrue(CentralityTest.near(e[s.indexOf("l2")],
+            0.3535533167, 0.00001));
+
+        Graph g = CentralityTest.gGraph();
+        float64[] eg = Centrality.eigenvector(g, (int64) 100, 0.000001);
+        // a..g: 0.2503224845 0.4193205857 0.4520931140 0.2503224845
+        //       0.4193205857 0.4520931140 0.3379962025
+        Assert.isTrue(CentralityTest.near(eg[g.indexOf("a")],
+            0.2503224845, 0.00001));
+        Assert.isTrue(CentralityTest.near(eg[g.indexOf("b")],
+            0.4193205857, 0.00001));
+        Assert.isTrue(CentralityTest.near(eg[g.indexOf("c")],
+            0.4520931140, 0.00001));
+        Assert.isTrue(CentralityTest.near(eg[g.indexOf("g")],
+            0.3379962025, 0.00001));
+    }
+
+    // 3.1.2 — the weighted variant names its attribute and matches.
+    @Test
+    public void eigenvectorWeightedMatchesNetworkX() {
+        Graph g = CentralityTest.gGraph();
+        g.setEdgeAttr("a", "b", "weight", 1.0);
+        g.setEdgeAttr("b", "c", "weight", 2.0);
+        g.setEdgeAttr("a", "d", "weight", 4.0);
+        g.setEdgeAttr("b", "e", "weight", 7.0);
+        g.setEdgeAttr("c", "f", "weight", 3.0);
+        g.setEdgeAttr("d", "e", "weight", 1.0);
+        g.setEdgeAttr("e", "f", "weight", 1.0);
+        g.setEdgeAttr("f", "g", "weight", 9.0);
+        g.setEdgeAttr("c", "g", "weight", 1.0);
+        float64[] e = Centrality.eigenvectorWeighted(g, (int64) 100,
+            0.000001, "weight");
+        // a..g: 0.0348974785 0.2120202774 0.2989856097 0.0351555689
+        //       0.2156586463 0.6599592376 0.6173705631
+        Assert.isTrue(CentralityTest.near(e[g.indexOf("a")],
+            0.0348974785, 0.0001));
+        Assert.isTrue(CentralityTest.near(e[g.indexOf("f")],
+            0.6599592376, 0.0001));
+        Assert.isTrue(CentralityTest.near(e[g.indexOf("g")],
+            0.6173705631, 0.0001));
+    }
+
+    // 3.1.3 — non-convergence is NEVER disguised: an unmeetable budget
+    // throws rather than returning the last iterate.
+    @Test
+    public void nonConvergenceIsLoud() {
+        Assert.assertThrows(() -> {
+            Graph g = CentralityTest.gGraph();
+            float64[] e = Centrality.eigenvector(g, (int64) 2,
+                0.000000000001);
+        });
+    }
+
+    // 3.1.8 — betweenness by Brandes matches NetworkX, normalized and raw.
+    @Test
+    public void betweennessMatchesNetworkX() {
+        Graph s = CentralityTest.star();
+        float64[] raw = Centrality.betweenness(s, false);
+        Assert.isTrue(CentralityTest.near(raw[s.indexOf("s")], 6.0,
+            0.000000001));
+        Assert.isTrue(raw[s.indexOf("l1")] == 0.0);
+        float64[] norm = Centrality.betweenness(s, true);
+        Assert.isTrue(CentralityTest.near(norm[s.indexOf("s")], 1.0,
+            0.000000001));
+
+        Graph g = CentralityTest.gGraph();
+        float64[] b = Centrality.betweenness(g, true);
+        // a..g: 0.0555555556 0.2888888889 0.1888888889 0.0555555556
+        //       0.2888888889 0.1888888889 0.0
+        Assert.isTrue(CentralityTest.near(b[g.indexOf("a")],
+            0.0555555556, 0.000000001));
+        Assert.isTrue(CentralityTest.near(b[g.indexOf("b")],
+            0.2888888889, 0.000000001));
+        Assert.isTrue(CentralityTest.near(b[g.indexOf("c")],
+            0.1888888889, 0.000000001));
+        Assert.isTrue(b[g.indexOf("g")] == 0.0);
+
+        // Directed Brandes (dep graph): lib1 0.0416666667, lib2 0.125.
+        Graph d = Graph.directed();
+        d.addEdge("app", "lib1");
+        d.addEdge("app", "lib2");
+        d.addEdge("tool", "lib2");
+        d.addEdge("lib1", "util");
+        d.addEdge("lib2", "util");
+        float64[] bd = Centrality.betweenness(d, true);
+        Assert.isTrue(CentralityTest.near(bd[d.indexOf("lib1")],
+            0.0416666667, 0.000000001));
+        Assert.isTrue(CentralityTest.near(bd[d.indexOf("lib2")],
+            0.125, 0.000000001));
+        Assert.isTrue(bd[d.indexOf("app")] == 0.0);
+    }
+
+    // §4.8 — endpoints are counted when asked, matching `endpoints=True`.
+    @Test
+    public void betweennessEndpointsMatchesNetworkX() {
+        Graph g = CentralityTest.gGraph();
+        float64[] b = Centrality.betweennessEndpoints(g, true);
+        // a..g: 0.3253968254 0.4920634921 0.4206349206 0.3253968254
+        //       0.4920634921 0.4206349206 0.2857142857
+        Assert.isTrue(CentralityTest.near(b[g.indexOf("a")],
+            0.3253968254, 0.000000001));
+        Assert.isTrue(CentralityTest.near(b[g.indexOf("b")],
+            0.4920634921, 0.000000001));
+        Assert.isTrue(CentralityTest.near(b[g.indexOf("g")],
+            0.2857142857, 0.000000001));
+    }
+
+    // 3.1.9 — closeness matches NetworkX including the disconnected-graph
+    // convention (reachable-fraction scaling; an isolated node is 0).
+    @Test
+    public void closenessMatchesNetworkXIncludingDisconnected() {
+        Graph s = CentralityTest.star();
+        float64[] c = Centrality.closeness(s);
+        Assert.isTrue(CentralityTest.near(c[s.indexOf("s")], 1.0,
+            0.000000001));
+        Assert.isTrue(CentralityTest.near(c[s.indexOf("l3")],
+            0.5714285714, 0.000000001));
+
+        Graph g = CentralityTest.gGraph();
+        g.addNode("h");
+        float64[] cg = Centrality.closeness(g);
+        // a..h: 0.4285714286 0.5714285714 0.5142857143 0.4285714286
+        //       0.5714285714 0.5142857143 0.4285714286 0.0
+        Assert.isTrue(CentralityTest.near(cg[g.indexOf("a")],
+            0.4285714286, 0.000000001));
+        Assert.isTrue(CentralityTest.near(cg[g.indexOf("b")],
+            0.5714285714, 0.000000001));
+        Assert.isTrue(CentralityTest.near(cg[g.indexOf("c")],
+            0.5142857143, 0.000000001));
+        Assert.isTrue(cg[g.indexOf("h")] == 0.0);
+    }
+
+    // 3.1.10 — sampled betweenness approaches exact as the sample grows:
+    // k = n IS exact (all sources, scale n/k = 1); a half sample stays
+    // within the stated O(1/sqrt(k)) band.
+    @Test
+    public void sampledBetweennessApproachesExact() {
+        Graph g = CentralityTest.gGraph();
+        float64[] exact = Centrality.betweenness(g, true);
+        float64[] full = Centrality.betweennessSampled(g, (int64) 7,
+            (uint64) 42, true);
+        int64 i = 0;
+        while (i < (int64) 7) {
+            Assert.isTrue(CentralityTest.near(exact[i], full[i],
+                0.000000001));
+            i = i + 1;
+        }
+        // Half sample: within a generous fixed band of exact.
+        float64[] half = Centrality.betweennessSampled(g, (int64) 4,
+            (uint64) 42, true);
+        i = 0;
+        while (i < (int64) 7) {
+            Assert.isTrue(CentralityTest.near(exact[i], half[i], 0.35));
+            i = i + 1;
+        }
+    }
+}

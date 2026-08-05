@@ -1,0 +1,197 @@
+package dev.cajeta.graph;
+
+/**
+ * PageRank (spec §4.4.1–§4.4.3): the damped stationary distribution,
+ * matching NetworkX's `pagerank` formulation — per-iteration:
+ *
+ *   x'[v] = d · Σ_{u→v} x[u]·w(u,v)/S(u)  +  d · (Σ_{sinks} x[u]) · p[v]
+ *         + (1-d) · p[v]
+ *
+ * where `S(u)` is u's out-strength and `p` the personalization
+ * distribution (uniform by default). RANK SINKS — nodes with no outbound
+ * edges, the leaf utilities of a dependency graph (§4.4.2) — have their
+ * mass REDISTRIBUTED through `p` rather than absorbed; this is the whole
+ * reason damping exists and the difference from undamped eigenvector
+ * centrality. Convergence: Σ|x'-x| < n·tol within `maxIter`, else a loud
+ * throw (never the last iterate).
+ *
+ * Direction is respected (§4.4.3): `reverse=true` runs on the reversed
+ * graph WITHOUT rebuilding — the in-adjacency the graph already keeps
+ * simply swaps roles with the out-adjacency.
+ *
+ * Results are index-shaped (`Graph.nodeAt` joins back, §7.2) and sum to 1.
+ */
+public final class PageRank {
+
+    /** PageRank at NetworkX defaults: damping 0.85, maxIter 100, tol 1e-6. */
+    public static #float64[] compute(Graph g) {
+        float64[] uniform = heap float64[0];
+        return PageRank.full(g, 0.85, (int64) 100, 0.000001, uniform, "",
+            false);
+    }
+
+    /** PageRank on the REVERSED graph (§4.4.3), defaults as `compute`. */
+    public static #float64[] reversed(Graph g) {
+        float64[] uniform = heap float64[0];
+        return PageRank.full(g, 0.85, (int64) 100, 0.000001, uniform, "",
+            true);
+    }
+
+    /** Personalized PageRank (defaults as `compute`); `pers` need not be
+     *  normalized — it is scaled to sum 1, and must not be all-zero. */
+    public static #float64[] personalized(Graph g, float64[] pers) {
+        return PageRank.full(g, 0.85, (int64) 100, 0.000001, pers, "",
+            false);
+    }
+
+    /** Edge-weighted PageRank over attribute `weightAttr` (§2.4 — the
+     *  attribute is NAMED; missing values are loud). */
+    public static #float64[] weighted(Graph g, String weightAttr) {
+        float64[] uniform = heap float64[0];
+        return PageRank.full(g, 0.85, (int64) 100, 0.000001, uniform,
+            weightAttr, false);
+    }
+
+    /**
+     * The full form. `pers` of length 0 means uniform; `weightAttr` of
+     * `""` means unweighted; `reverse` ranks by outbound influence.
+     */
+    public static #float64[] full(Graph g, float64 damping, int64 maxIter,
+                                  float64 tol, float64[] pers,
+                                  String weightAttr, boolean reverse) {
+        int64 n = g.nodeCount();
+        float64[] x = heap float64[n];
+        if (n == 0) {
+            return #x;
+        }
+        boolean weighted = weightAttr.count() > 0;
+        boolean useIn = reverse && g.isDirected();
+        // Personalization distribution p.
+        float64[] p = heap float64[n];
+        int64 i = 0;
+        if ((int64) pers.count() == 0) {
+            while (i < n) {
+                p[i] = 1.0 / (float64) n;
+                i = i + 1;
+            }
+        } else {
+            if ((int64) pers.count() != n) {
+                throw heap GraphException(
+                    "pagerank: personalization length != node count");
+            }
+            float64 psum = 0.0;
+            while (i < n) {
+                psum = psum + pers[i];
+                i = i + 1;
+            }
+            if (psum <= 0.0) {
+                throw heap GraphException(
+                    "pagerank: personalization sums to zero");
+            }
+            i = 0;
+            while (i < n) {
+                p[i] = pers[i] / psum;
+                i = i + 1;
+            }
+        }
+        // Out-strength per node in the (possibly reversed) orientation.
+        // Undirected graphs are symmetric: reverse is a no-op and the
+        // adjacency list already carries both endpoints.
+        float64[] strength = heap float64[n];
+        int64 u = 0;
+        while (u < n) {
+            float64 s = 0.0;
+            int64 kn = PageRank.outCount(g, u, useIn);
+            int64 k = 0;
+            while (k < kn) {
+                int64 e = PageRank.outEdge(g, u, k, useIn);
+                float64 w = 1.0;
+                if (weighted) {
+                    w = g.edgeAttrByEid(e, weightAttr);
+                    if (w < 0.0) {
+                        throw heap GraphException(
+                            "pagerank: negative weight");
+                    }
+                }
+                s = s + w;
+                k = k + 1;
+            }
+            strength[u] = s;
+            u = u + 1;
+        }
+        // Iterate from the uniform start (NetworkX's nstart=None).
+        float64[] xnew = heap float64[n];
+        i = 0;
+        while (i < n) {
+            x[i] = 1.0 / (float64) n;
+            i = i + 1;
+        }
+        int64 it = 0;
+        while (it < maxIter) {
+            // danglesum: mass sitting on sinks this iteration.
+            float64 dangle = 0.0;
+            i = 0;
+            while (i < n) {
+                if (strength[i] == 0.0) {
+                    dangle = dangle + x[i];
+                }
+                xnew[i] = 0.0;
+                i = i + 1;
+            }
+            dangle = dangle * damping;
+            u = 0;
+            while (u < n) {
+                if (strength[u] > 0.0) {
+                    float64 share = damping * x[u] / strength[u];
+                    int64 kn = PageRank.outCount(g, u, useIn);
+                    int64 k = 0;
+                    while (k < kn) {
+                        int64 e = PageRank.outEdge(g, u, k, useIn);
+                        int64 v = g.edgeOther(e, u);
+                        float64 w = 1.0;
+                        if (weighted) {
+                            w = g.edgeAttrByEid(e, weightAttr);
+                        }
+                        xnew[v] = xnew[v] + share * w;
+                        k = k + 1;
+                    }
+                }
+                u = u + 1;
+            }
+            float64 diff = 0.0;
+            i = 0;
+            while (i < n) {
+                xnew[i] = xnew[i] + dangle * p[i]
+                        + (1.0 - damping) * p[i];
+                float64 d = xnew[i] - x[i];
+                if (d < 0.0) {
+                    d = -d;
+                }
+                diff = diff + d;
+                x[i] = xnew[i];
+                i = i + 1;
+            }
+            if (diff < (float64) n * tol) {
+                return #x;
+            }
+            it = it + 1;
+        }
+        throw heap GraphException(
+            "pagerank: failed to converge within maxIter — raise maxIter "
+            + "or loosen tol; the last iterate is NOT returned");
+    }
+
+    private static int64 outCount(Graph g, int64 u, boolean useIn) {
+        if (useIn) {
+            return g.inEdgeCountAt(u);
+        }
+        return g.edgeCountAt(u);
+    }
+
+    private static int64 outEdge(Graph g, int64 u, int64 k, boolean useIn) {
+        if (useIn) {
+            return g.inEdgeAt(u, k);
+        }
+        return g.edgeAt(u, k);
+    }
+}

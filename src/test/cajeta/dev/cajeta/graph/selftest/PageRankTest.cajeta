@@ -1,0 +1,133 @@
+package dev.cajeta.graph.selftest;
+
+import dev.cajeta.unit.Assert;
+import dev.cajeta.graph.Graph;
+import dev.cajeta.graph.PageRank;
+
+/**
+ * ml-graph-analytics plan 3.1.4–3.1.7 — PageRank, pinned against
+ * NetworkX 3.6.1 `pagerank` (tools/fixtures/gen_centrality.py).
+ *
+ * The fixture is the spec §4.4.2 shape: a dependency graph where the leaf
+ * utility imports nothing — a RANK SINK. app,lib1,lib2,tool,util:
+ *
+ *   pr   0.1015745384 0.1447438241 0.2310823954 0.1015745384 0.4210247037
+ *   prR  0.3405109471 0.1722572757 0.1722572757 0.1940919900 0.1208825114
+ *   prP  0.3887270714 0.1652094099 0.1652094099 0.0          0.2808541088
+ *   prW  0.1015745384 0.1231591812 0.2526670382 0.1015745384 0.4210247037
+ */
+public class PageRankTest {
+
+    public PageRankTest() { return; }
+
+    static boolean near(float64 a, float64 b) {
+        float64 d = a - b;
+        if (d < 0.0) {
+            d = -d;
+        }
+        return d < 0.000005;
+    }
+
+    /** app->lib1, app->lib2, tool->lib2, lib1->util, lib2->util. */
+    static #Graph dep() {
+        Graph g = Graph.directed();
+        g.addEdge("app", "lib1");
+        g.addEdge("app", "lib2");
+        g.addEdge("tool", "lib2");
+        g.addEdge("lib1", "util");
+        g.addEdge("lib2", "util");
+        return #g;
+    }
+
+    // 3.1.4 — PageRank at damping 0.85 matches NetworkX.
+    @Test
+    public void pagerankMatchesNetworkX() {
+        Graph g = PageRankTest.dep();
+        float64[] pr = PageRank.compute(g);
+        Assert.isTrue(PageRankTest.near(pr[g.indexOf("app")], 0.1015745384));
+        Assert.isTrue(PageRankTest.near(pr[g.indexOf("lib1")], 0.1447438241));
+        Assert.isTrue(PageRankTest.near(pr[g.indexOf("lib2")], 0.2310823954));
+        Assert.isTrue(PageRankTest.near(pr[g.indexOf("tool")], 0.1015745384));
+        Assert.isTrue(PageRankTest.near(pr[g.indexOf("util")], 0.4210247037));
+    }
+
+    // 3.1.5 — rank sinks redistribute rather than absorb (§4.4.2): the
+    // scores still sum to 1 even though util has no outbound edges, and
+    // the sources keep non-trivial mass (an absorbing sink would drain
+    // them toward the teleport floor (1-d)/n = 0.03).
+    @Test
+    public void sinksRedistributeRatherThanAbsorb() {
+        Graph g = PageRankTest.dep();
+        float64[] pr = PageRank.compute(g);
+        float64 sum = 0.0;
+        int64 i = 0;
+        while (i < g.nodeCount()) {
+            sum = sum + pr[i];
+            i = i + 1;
+        }
+        Assert.isTrue(PageRankTest.near(sum, 1.0));
+        Assert.isTrue(pr[g.indexOf("app")] > 0.09);
+        Assert.isTrue(pr[g.indexOf("util")] < 0.5);
+    }
+
+    // 3.1.6 — personalized PageRank matches NetworkX (all mass on app;
+    // tool is unreachable from app and gets exactly 0).
+    @Test
+    public void personalizedMatchesNetworkX() {
+        Graph g = PageRankTest.dep();
+        float64[] p = heap float64[5];
+        p[g.indexOf("app")] = 1.0;
+        float64[] pr = PageRank.personalized(g, p);
+        Assert.isTrue(PageRankTest.near(pr[g.indexOf("app")], 0.3887270714));
+        Assert.isTrue(PageRankTest.near(pr[g.indexOf("lib1")], 0.1652094099));
+        Assert.isTrue(PageRankTest.near(pr[g.indexOf("lib2")], 0.1652094099));
+        Assert.isTrue(pr[g.indexOf("tool")] == 0.0);
+        Assert.isTrue(PageRankTest.near(pr[g.indexOf("util")], 0.2808541088));
+    }
+
+    // 3.1.6 — edge-weighted PageRank matches NetworkX.
+    @Test
+    public void weightedMatchesNetworkX() {
+        Graph g = Graph.directed();
+        g.addEdge("app", "lib1");
+        g.setEdgeAttr("app", "lib1", "w", 1.0);
+        g.addEdge("app", "lib2");
+        g.setEdgeAttr("app", "lib2", "w", 3.0);
+        g.addEdge("tool", "lib2");
+        g.setEdgeAttr("tool", "lib2", "w", 1.0);
+        g.addEdge("lib1", "util");
+        g.setEdgeAttr("lib1", "util", "w", 1.0);
+        g.addEdge("lib2", "util");
+        g.setEdgeAttr("lib2", "util", "w", 1.0);
+        float64[] pr = PageRank.weighted(g, "w");
+        Assert.isTrue(PageRankTest.near(pr[g.indexOf("lib1")], 0.1231591812));
+        Assert.isTrue(PageRankTest.near(pr[g.indexOf("lib2")], 0.2526670382));
+        Assert.isTrue(PageRankTest.near(pr[g.indexOf("util")], 0.4210247037));
+    }
+
+    // 3.1.7 — PageRank respects direction: the reverse ranking differs and
+    // is reachable WITHOUT rebuilding the graph (§4.4.3).
+    @Test
+    public void reverseRanksDifferentlyWithoutRebuilding() {
+        Graph g = PageRankTest.dep();
+        float64[] fwd = PageRank.compute(g);
+        float64[] rev = PageRank.reversed(g);
+        // Reverse pins (NetworkX on D.reverse()).
+        Assert.isTrue(PageRankTest.near(rev[g.indexOf("app")], 0.3405109471));
+        Assert.isTrue(PageRankTest.near(rev[g.indexOf("lib1")], 0.1722572757));
+        Assert.isTrue(PageRankTest.near(rev[g.indexOf("tool")], 0.1940919900));
+        Assert.isTrue(PageRankTest.near(rev[g.indexOf("util")], 0.1208825114));
+        // The rankings genuinely differ: util tops forward, app tops reverse.
+        Assert.isTrue(fwd[g.indexOf("util")] > fwd[g.indexOf("app")]);
+        Assert.isTrue(rev[g.indexOf("app")] > rev[g.indexOf("util")]);
+    }
+
+    // §2.4 discipline — weighted PageRank with a missing attribute is loud.
+    @Test
+    public void weightedWithMissingAttributeIsLoud() {
+        Assert.assertThrows(() -> {
+            Graph g = PageRankTest.dep();
+            float64[] pr = PageRank.weighted(g, "w");
+        });
+    }
+}

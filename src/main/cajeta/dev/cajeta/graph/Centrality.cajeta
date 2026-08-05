@@ -1,0 +1,415 @@
+package dev.cajeta.graph;
+
+import cajeta.math.random.Generator;
+import cajeta.math.Tensor;
+
+/**
+ * The centrality family (spec §4): degree, eigenvector (power iteration,
+ * loud non-convergence), betweenness (Brandes, exact and k-sampled, with
+ * the `endpoints` variant), and closeness (NetworkX's disconnected-graph
+ * convention). PageRank lives in {@link PageRank}.
+ *
+ * Every function returns an index-shaped `float64[]` in the graph's
+ * stable insertion-order indexing; join back to identities via
+ * `Graph.nodeAt` (§7.2).
+ *
+ * Disconnected graphs (§4.10): degree and eigenvector are computed as-is
+ * per node; closeness scales by the reachable fraction (isolated node =
+ * 0); betweenness simply accumulates no pairs across components.
+ */
+public final class Centrality {
+
+    // ------------------------------------------------------------------
+    // Degree (§4.1, §4.2)
+    // ------------------------------------------------------------------
+
+    /** Degree centrality: degree / (n-1). Directed: in + out degree. */
+    public static #float64[] degree(Graph g) {
+        int64 n = g.nodeCount();
+        float64[] out = heap float64[n];
+        if (n < 2) {
+            return #out;
+        }
+        float64 denom = (float64) (n - (int64) 1);
+        int64 i = 0;
+        while (i < n) {
+            out[i] = (float64) g.degreeAt(i) / denom;
+            i = i + 1;
+        }
+        return #out;
+    }
+
+    /** In-degree centrality of a directed graph: inDegree / (n-1). */
+    public static #float64[] inDegreeCentrality(Graph g) {
+        if (!g.isDirected()) {
+            throw heap GraphException(
+                "inDegreeCentrality: undirected graph — use degree");
+        }
+        int64 n = g.nodeCount();
+        float64[] out = heap float64[n];
+        if (n < 2) {
+            return #out;
+        }
+        float64 denom = (float64) (n - (int64) 1);
+        int64 i = 0;
+        while (i < n) {
+            out[i] = (float64) g.inEdgeCountAt(i) / denom;
+            i = i + 1;
+        }
+        return #out;
+    }
+
+    /** Out-degree centrality of a directed graph: outDegree / (n-1). */
+    public static #float64[] outDegreeCentrality(Graph g) {
+        if (!g.isDirected()) {
+            throw heap GraphException(
+                "outDegreeCentrality: undirected graph — use degree");
+        }
+        int64 n = g.nodeCount();
+        float64[] out = heap float64[n];
+        if (n < 2) {
+            return #out;
+        }
+        float64 denom = (float64) (n - (int64) 1);
+        int64 i = 0;
+        while (i < n) {
+            out[i] = (float64) g.edgeCountAt(i) / denom;
+            i = i + 1;
+        }
+        return #out;
+    }
+
+    // ------------------------------------------------------------------
+    // Eigenvector (§4.3, §4.4) — NetworkX's exact iteration:
+    //   x' = x + Aᵀx, L2-normalize, converged when Σ|x'-x| < n·tol.
+    // ------------------------------------------------------------------
+
+    /** Unweighted eigenvector centrality; throws on non-convergence. */
+    public static #float64[] eigenvector(Graph g, int64 maxIter,
+                                         float64 tol) {
+        return Centrality.eigenCore(g, maxIter, tol, "", false);
+    }
+
+    /** Weighted eigenvector centrality over attribute `weightAttr`. */
+    public static #float64[] eigenvectorWeighted(Graph g, int64 maxIter,
+                                                 float64 tol,
+                                                 String weightAttr) {
+        return Centrality.eigenCore(g, maxIter, tol, weightAttr, true);
+    }
+
+    private static #float64[] eigenCore(Graph g, int64 maxIter, float64 tol,
+                                        String weightAttr,
+                                        boolean weighted) {
+        int64 n = g.nodeCount();
+        float64[] x = heap float64[n];
+        float64[] xlast = heap float64[n];
+        int64 i = 0;
+        while (i < n) {
+            x[i] = 1.0 / (float64) n;
+            i = i + 1;
+        }
+        int64 it = 0;
+        while (it < maxIter) {
+            i = 0;
+            while (i < n) {
+                xlast[i] = x[i];
+                i = i + 1;
+            }
+            // x = xlast + Aᵀ xlast over out-edges (undirected: both ways —
+            // the adjacency lists already hold each edge at both nodes).
+            int64 u = 0;
+            while (u < n) {
+                int64 k = 0;
+                int64 kn = g.edgeCountAt(u);
+                while (k < kn) {
+                    int64 e = g.edgeAt(u, k);
+                    int64 v = g.edgeOther(e, u);
+                    float64 w = 1.0;
+                    if (weighted) {
+                        w = g.edgeAttrByEid(e, weightAttr);
+                    }
+                    x[v] = x[v] + xlast[u] * w;
+                    k = k + 1;
+                }
+                u = u + 1;
+            }
+            // L2 normalize (norm 0 -> 1, NetworkX's guard).
+            float64 norm = 0.0;
+            i = 0;
+            while (i < n) {
+                norm = norm + x[i] * x[i];
+                i = i + 1;
+            }
+            norm = Math.sqrt(norm);
+            if (norm == 0.0) {
+                norm = 1.0;
+            }
+            float64 diff = 0.0;
+            i = 0;
+            while (i < n) {
+                x[i] = x[i] / norm;
+                float64 d = x[i] - xlast[i];
+                if (d < 0.0) {
+                    d = -d;
+                }
+                diff = diff + d;
+                i = i + 1;
+            }
+            if (diff < (float64) n * tol) {
+                return #x;
+            }
+            it = it + 1;
+        }
+        throw heap GraphException(
+            "eigenvector: power iteration failed to converge within maxIter"
+            + " — raise maxIter or loosen tol; the last iterate is NOT "
+            + "returned");
+    }
+
+    // ------------------------------------------------------------------
+    // Closeness (§4.9) — NetworkX convention: for node u with r-1 reachable
+    // others at total distance s: ((r-1)/s) · ((r-1)/(n-1)); isolated = 0.
+    // Directed graphs use INCOMING distances (NetworkX's default).
+    // ------------------------------------------------------------------
+
+    public static #float64[] closeness(Graph g) {
+        int64 n = g.nodeCount();
+        float64[] out = heap float64[n];
+        int64[] queue = heap int64[n];
+        float64[] dist = heap float64[n];
+        int64 u = 0;
+        while (u < n) {
+            // BFS from u over incoming edges when directed (in-distance),
+            // plain adjacency when undirected.
+            int64 i = 0;
+            while (i < n) {
+                dist[i] = -1.0;
+                i = i + 1;
+            }
+            dist[u] = 0.0;
+            int64 head = 0;
+            int64 tail = 0;
+            queue[tail] = u;
+            tail = tail + 1;
+            float64 total = 0.0;
+            int64 reach = 0;
+            while (head < tail) {
+                int64 c = queue[head];
+                head = head + 1;
+                total = total + dist[c];
+                reach = reach + 1;
+                int64 k = 0;
+                int64 kn = g.edgeCountAt(c);
+                if (g.isDirected()) {
+                    kn = g.inEdgeCountAt(c);
+                }
+                while (k < kn) {
+                    int64 e = g.edgeAt(c, k);
+                    if (g.isDirected()) {
+                        e = g.inEdgeAt(c, k);
+                    }
+                    int64 v = g.edgeOther(e, c);
+                    if (dist[v] < 0.0) {
+                        dist[v] = dist[c] + 1.0;
+                        queue[tail] = v;
+                        tail = tail + 1;
+                    }
+                    k = k + 1;
+                }
+            }
+            if (reach > 1 && total > 0.0) {
+                float64 r1 = (float64) (reach - (int64) 1);
+                out[u] = (r1 / total) * (r1 / (float64) (n - (int64) 1));
+            } else {
+                out[u] = 0.0;
+            }
+            u = u + 1;
+        }
+        return #out;
+    }
+
+    // ------------------------------------------------------------------
+    // Betweenness (§4.5–§4.8) — Brandes over unweighted BFS.
+    // ------------------------------------------------------------------
+
+    /** Exact betweenness by Brandes; normalized divides by (n-1)(n-2)
+     *  (undirected values include the pair double-count, so this equals
+     *  the spec §4.6 form 2/((n-1)(n-2)) on per-pair values); raw
+     *  undirected halves the double-count (NetworkX). */
+    public static #float64[] betweenness(Graph g, boolean normalized) {
+        return Centrality.brandes(g, normalized, false, (int64) -1,
+            (uint64) 0);
+    }
+
+    /** Betweenness counting endpoints (§4.8, NetworkX `endpoints=True`);
+     *  normalized divides by n(n-1). */
+    public static #float64[] betweennessEndpoints(Graph g,
+                                                  boolean normalized) {
+        return Centrality.brandes(g, normalized, true, (int64) -1,
+            (uint64) 0);
+    }
+
+    /**
+     * k-sampled approximate betweenness (§4.7): Brandes from `k` seeded
+     * sample sources (without replacement), scaled by n/k. Documented as
+     * an APPROXIMATION with standard error O(1/sqrt(k)); k = n is exact.
+     */
+    public static #float64[] betweennessSampled(Graph g, int64 k,
+                                                uint64 seed,
+                                                boolean normalized) {
+        return Centrality.brandes(g, normalized, false, k, seed);
+    }
+
+    private static #float64[] brandes(Graph g, boolean normalized,
+                                      boolean endpoints, int64 kSample,
+                                      uint64 seed) {
+        int64 n = g.nodeCount();
+        float64[] bc = heap float64[n];
+        if (n < 2) {
+            return #bc;
+        }
+        // Source set: all nodes, or a seeded sample without replacement.
+        int64 nSources = n;
+        int64[] sources = heap int64[n];
+        int64 i = 0;
+        while (i < n) {
+            sources[i] = i;
+            i = i + 1;
+        }
+        if (kSample >= 0 && kSample < n) {
+            nSources = kSample;
+            Generator gen = heap Generator(seed);
+            Tensor<int64> pick = gen.choice(n, kSample, false);
+            i = 0;
+            while (i < kSample) {
+                sources[i] = pick.get1(i);
+                i = i + 1;
+            }
+        }
+        int64[] order = heap int64[n];       // BFS visit order (the stack)
+        int64[] queue = heap int64[n];
+        float64[] sigma = heap float64[n];
+        float64[] dist = heap float64[n];
+        float64[] delta = heap float64[n];
+        // Predecessor lists, flat: each node's preds start at pStart[v].
+        int64 m2 = g.edgeCount() * (int64) 2 + (int64) 1;
+        int64[] preds = heap int64[m2];
+        int64[] pStart = heap int64[n + (int64) 1];
+        int64[] pCount = heap int64[n];
+        int64 si = 0;
+        while (si < nSources) {
+            int64 s = sources[si];
+            // --- forward BFS with path counting
+            i = 0;
+            while (i < n) {
+                sigma[i] = 0.0;
+                dist[i] = -1.0;
+                delta[i] = 0.0;
+                pCount[i] = 0;
+                i = i + 1;
+            }
+            sigma[s] = 1.0;
+            dist[s] = 0.0;
+            int64 head = 0;
+            int64 tail = 0;
+            queue[tail] = s;
+            tail = tail + 1;
+            int64 no = 0;
+            // First pass counts predecessors to lay out the flat lists.
+            while (head < tail) {
+                int64 u = queue[head];
+                head = head + 1;
+                order[no] = u;
+                no = no + 1;
+                int64 k = 0;
+                int64 kn = g.edgeCountAt(u);
+                while (k < kn) {
+                    int64 v = g.edgeOther(g.edgeAt(u, k), u);
+                    if (dist[v] < 0.0) {
+                        dist[v] = dist[u] + 1.0;
+                        queue[tail] = v;
+                        tail = tail + 1;
+                    }
+                    if (dist[v] == dist[u] + 1.0) {
+                        sigma[v] = sigma[v] + sigma[u];
+                        pCount[v] = pCount[v] + 1;
+                    }
+                    k = k + 1;
+                }
+            }
+            // Lay out predecessor lists and fill them.
+            int64 acc = 0;
+            i = 0;
+            while (i < n) {
+                pStart[i] = acc;
+                acc = acc + pCount[i];
+                pCount[i] = 0;
+                i = i + 1;
+            }
+            i = 0;
+            while (i < no) {
+                int64 u = order[i];
+                int64 k = 0;
+                int64 kn = g.edgeCountAt(u);
+                while (k < kn) {
+                    int64 v = g.edgeOther(g.edgeAt(u, k), u);
+                    if (dist[v] == dist[u] + 1.0) {
+                        preds[pStart[v] + pCount[v]] = u;
+                        pCount[v] = pCount[v] + 1;
+                    }
+                    k = k + 1;
+                }
+                i = i + 1;
+            }
+            // --- backward accumulation (reverse BFS order)
+            if (endpoints) {
+                bc[s] = bc[s] + (float64) (no - (int64) 1);
+            }
+            i = no - 1;
+            while (i >= 0) {
+                int64 w = order[i];
+                float64 coeff = (1.0 + delta[w]) / sigma[w];
+                int64 p = 0;
+                while (p < pCount[w]) {
+                    int64 v = preds[pStart[w] + p];
+                    delta[v] = delta[v] + sigma[v] * coeff;
+                    p = p + 1;
+                }
+                if (w != s) {
+                    if (endpoints) {
+                        bc[w] = bc[w] + delta[w] + 1.0;
+                    } else {
+                        bc[w] = bc[w] + delta[w];
+                    }
+                }
+                i = i - 1;
+            }
+            si = si + 1;
+        }
+        // --- rescale (NetworkX `_rescale`)
+        float64 scale = -1.0;
+        if (normalized) {
+            if (endpoints) {
+                scale = 1.0 / ((float64) n * (float64) (n - (int64) 1));
+            } else if (n > 2) {
+                scale = 1.0 / ((float64) (n - (int64) 1)
+                              * (float64) (n - (int64) 2));
+            }
+        } else {
+            if (!g.isDirected()) {
+                scale = 0.5;
+            }
+        }
+        if (scale >= 0.0) {
+            if (kSample >= 0 && kSample < n && kSample > 0) {
+                scale = scale * (float64) n / (float64) kSample;
+            }
+            i = 0;
+            while (i < n) {
+                bc[i] = bc[i] * scale;
+                i = i + 1;
+            }
+        }
+        return #bc;
+    }
+}
