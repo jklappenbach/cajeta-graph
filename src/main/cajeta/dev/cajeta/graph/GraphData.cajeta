@@ -1,0 +1,88 @@
+package dev.cajeta.graph;
+
+import cajeta.collection.ArrayList;
+
+/**
+ * The rendering hand-off (spec §8.1, plan 5.2.2): graph structure emitted
+ * as plain DATA for `dev.cajeta.chart` to render. This library computes
+ * NO node positions, no layout, and draws nothing — the render side owns
+ * all of that. What crosses the boundary is exactly:
+ *
+ *   - node identities in the stable insertion-order indexing
+ *     (`nodeIds`), which every index-shaped result (centrality arrays,
+ *     component labels, Louvain labels) joins onto by position (§7.2);
+ *   - edge endpoint index arrays (`edgeSources`/`edgeTargets`) plus
+ *     optional per-edge weights (`edgeWeights`) and type names
+ *     (`edgeTypes`);
+ *   - the sparse adjacency as `CsrMatrix` via `Graph.toCsr` (§7.3).
+ */
+public final class GraphData {
+
+    /** All node identities, insertion-ordered (index i = `nodeAt(i)`). */
+    public static #ArrayList<String> nodeIds(Graph g) {
+        ArrayList<String> out = heap ArrayList<String>();
+        int64 i = 0;
+        while (i < g.nodeCount()) {
+            String id = g.nodeAt(i);
+            String own = id.substring(0, (int32) id.count());
+            out.add(#own);
+            i = i + 1;
+        }
+        return #out;
+    }
+
+    /** Edge source node indices, edge-id ordered. */
+    public static #int64[] edgeSources(Graph g) {
+        int64 m = g.edgeCount();
+        int64[] out = heap int64[m];
+        int64 e = 0;
+        while (e < m) {
+            out[e] = g.edgeSrc(e);
+            e = e + 1;
+        }
+        return #out;
+    }
+
+    /** Edge target node indices, edge-id ordered. */
+    public static #int64[] edgeTargets(Graph g) {
+        int64 m = g.edgeCount();
+        int64[] out = heap int64[m];
+        int64 e = 0;
+        while (e < m) {
+            out[e] = g.edgeDst(e);
+            e = e + 1;
+        }
+        return #out;
+    }
+
+    /** Per-edge weights from the NAMED attribute (§2.4; unset is loud). */
+    public static #float64[] edgeWeights(Graph g, String weightAttr) {
+        int64 m = g.edgeCount();
+        float64[] out = heap float64[m];
+        int64 e = 0;
+        while (e < m) {
+            out[e] = g.edgeAttrByEid(e, weightAttr);
+            e = e + 1;
+        }
+        return #out;
+    }
+
+    /** Per-edge type names, edge-id ordered; `""` for untyped (§8.5). */
+    public static #ArrayList<String> edgeTypes(Graph g) {
+        ArrayList<String> out = heap ArrayList<String>();
+        int64 m = g.edgeCount();
+        int64 e = 0;
+        while (e < m) {
+            int64 t = g.edgeTypeIdOf(e);
+            if (t >= 0) {
+                String name = g.typeNameOf(t);
+                out.add(#name);
+            } else {
+                String untyped = "";
+                out.add(#untyped);
+            }
+            e = e + 1;
+        }
+        return #out;
+    }
+}

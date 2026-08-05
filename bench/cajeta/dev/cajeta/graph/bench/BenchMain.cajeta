@@ -1,0 +1,111 @@
+package dev.cajeta.graph.bench;
+
+import dev.cajeta.graph.Graph;
+import dev.cajeta.graph.Centrality;
+import dev.cajeta.graph.ShortestPaths;
+import dev.cajeta.graph.DistMatrix;
+import cajeta.math.random.Generator;
+import cajeta.math.Tensor;
+import cajeta.time.Clock;
+
+/**
+ * ml-graph-analytics plan 5.1.1–5.1.2 — the measured scaling numbers
+ * behind docs/scaling.md. Run via scripts/bench.sh; results are
+ * deterministic in STRUCTURE (seeded graphs) and machine-dependent in
+ * time, so docs record both the machine and the numbers.
+ *
+ * Benchmarks:
+ *  1. Exact vs k=64-sampled betweenness on seeded sparse graphs
+ *     (avg degree ~8) across doubling n — the §8.3 crossover.
+ *  2. Unweighted all-pairs at the documented ceiling n = 2000.
+ */
+public final class BenchMain {
+
+    /** Seeded sparse random graph: n nodes, ~4n edges (avg degree ~8). */
+    static #Graph randomGraph(int64 n, uint64 seed) {
+        Graph g = Graph.undirected();
+        // Pre-register every node so indices are 0..n-1.
+        int64 i = 0;
+        while (i < n) {
+            g.addNode(BenchMain.name(i));
+            i = i + 1;
+        }
+        Generator gen = heap Generator(seed);
+        int64 m = n * (int64) 4;
+        Tensor<int64> ends = gen.integers((int64) 0, n, m * (int64) 2);
+        int64 e = 0;
+        while (e < m) {
+            int64 u = ends.get1(e * (int64) 2);
+            int64 v = ends.get1(e * (int64) 2 + (int64) 1);
+            if (u != v) {
+                g.addEdge(g.nodeAt(u), g.nodeAt(v));
+            }
+            e = e + 1;
+        }
+        return #g;
+    }
+
+    static #String name(int64 i) {
+        return BenchMain.s64(i);
+    }
+
+    static #String s64(int64 v) {
+        return Int64.of(v).toString();
+    }
+
+    static #String sf(float64 v) {
+        return Float64.of(v).toString();
+    }
+
+    static float64 ms(int64 nanos) {
+        return (float64) nanos / 1000000.0;
+    }
+
+    public static int32 run() {
+        System.stdout.println("== betweenness: exact vs sampled k=64 ==");
+        int64 n = 250;
+        while (n <= (int64) 4000) {
+            Graph g = BenchMain.randomGraph(n, (uint64) 1234);
+            int64 t0 = Clock.nanoTime();
+            float64[] exact = Centrality.betweenness(g, true);
+            int64 t1 = Clock.nanoTime();
+            float64[] samp = Centrality.betweennessSampled(g, (int64) 64,
+                (uint64) 99, true);
+            int64 t2 = Clock.nanoTime();
+            // max abs error of the sample vs exact
+            float64 maxErr = 0.0;
+            int64 i = 0;
+            while (i < n) {
+                float64 d = exact[i] - samp[i];
+                if (d < 0.0) {
+                    d = -d;
+                }
+                if (d > maxErr) {
+                    maxErr = d;
+                }
+                i = i + 1;
+            }
+            System.stdout.println("n=" + BenchMain.s64(n)
+                + " edges=" + BenchMain.s64(g.edgeCount())
+                + " exactMs=" + BenchMain.sf(BenchMain.ms(t1 - t0))
+                + " sampledMs=" + BenchMain.sf(BenchMain.ms(t2 - t1))
+                + " maxErr=" + BenchMain.sf(maxErr));
+            n = n * (int64) 2;
+        }
+
+        System.stdout.println("== all-pairs unweighted at the ceiling ==");
+        Graph big = BenchMain.randomGraph((int64) 2000, (uint64) 77);
+        int64 t0 = Clock.nanoTime();
+        DistMatrix m = ShortestPaths.allPairs(big);
+        int64 t1 = Clock.nanoTime();
+        int64 reach01 = 0;
+        if (m.reachableAt((int64) 0, (int64) 1)) {
+            reach01 = 1;
+        }
+        System.stdout.println("n=2000 edges="
+            + BenchMain.s64(big.edgeCount())
+            + " allPairsMs=" + BenchMain.sf(BenchMain.ms(t1 - t0))
+            + " reach01=" + BenchMain.s64(reach01));
+        return 0;
+    }
+}

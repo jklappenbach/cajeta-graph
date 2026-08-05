@@ -504,6 +504,11 @@ public final class Graph {
         return this.etype.get((int32) e);
     }
 
+    /** The type name behind interned id `t` (owned copy). */
+    public #String typeNameOf(int64 t) {
+        return Graph.own(this.typeNames.get((int32) t));
+    }
+
     /** Interned id of `type`; -1 when no edge ever carried it. */
     public int64 typeIdOf(String type) {
         if (!this.typeIds.containsKey(type)) {
