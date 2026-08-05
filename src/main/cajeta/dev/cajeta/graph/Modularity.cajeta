@@ -1,0 +1,85 @@
+package dev.cajeta.graph;
+
+/**
+ * Modularity of a partition (spec §5.2, §5.3, §5.6):
+ *
+ *   Q = Σ_C [ L_C / m  −  γ · (D_C / 2m)² ]
+ *
+ * over an UNDIRECTED graph — L_C the intra-community edge weight, D_C the
+ * community degree sum (a self-loop counts once in L_C, twice in D_C —
+ * NetworkX's rule), m the total edge weight, γ the resolution scaling the
+ * NULL-MODEL term (§5.3; γ = 1 IS standard modularity). Weighted forms
+ * name their attribute (§2.4). Partitions from any source can be scored —
+ * that is the point of exposing this beside {@link Louvain}.
+ */
+public final class Modularity {
+
+    /** Standard unweighted modularity (γ = 1). */
+    public static float64 of(Graph g, int64[] labels) {
+        return Modularity.at(g, labels, 1.0, "");
+    }
+
+    /** Weighted modularity over attribute `weightAttr` (γ = 1). */
+    public static float64 weighted(Graph g, int64[] labels,
+                                   String weightAttr) {
+        return Modularity.at(g, labels, 1.0, weightAttr);
+    }
+
+    /** The full form; `weightAttr` of `""` means unweighted. */
+    public static float64 at(Graph g, int64[] labels, float64 resolution,
+                             String weightAttr) {
+        if (g.isDirected()) {
+            throw heap GraphException(
+                "modularity: directed graph — modularity here is the "
+                + "undirected notion; build an undirected graph");
+        }
+        int64 n = g.nodeCount();
+        if ((int64) labels.count() != n) {
+            throw heap GraphException(
+                "modularity: labels length != node count");
+        }
+        boolean useW = weightAttr.count() > 0;
+        // Dense per-community accumulators (community ids <= n-1).
+        float64[] lc = heap float64[n];
+        float64[] dc = heap float64[n];
+        float64 m = 0.0;
+        int64 e = 0;
+        int64 ne = g.edgeCount();
+        while (e < ne) {
+            int64 u = g.edgeSrc(e);
+            int64 v = g.edgeDst(e);
+            float64 w = 1.0;
+            if (useW) {
+                w = g.edgeAttrByEid(e, weightAttr);
+            }
+            m = m + w;
+            int64 cu = labels[u];
+            int64 cv = labels[v];
+            if (cu < 0 || cu >= n || cv < 0 || cv >= n) {
+                throw heap GraphException(
+                    "modularity: community label out of range");
+            }
+            if (cu == cv) {
+                lc[cu] = lc[cu] + w;
+            }
+            if (u == v) {
+                dc[cu] = dc[cu] + 2.0 * w;
+            } else {
+                dc[cu] = dc[cu] + w;
+                dc[cv] = dc[cv] + w;
+            }
+            e = e + 1;
+        }
+        if (m == 0.0) {
+            return 0.0;
+        }
+        float64 q = 0.0;
+        int64 c = 0;
+        while (c < n) {
+            float64 frac = dc[c] / (2.0 * m);
+            q = q + lc[c] / m - resolution * frac * frac;
+            c = c + 1;
+        }
+        return q;
+    }
+}

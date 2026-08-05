@@ -1,0 +1,72 @@
+package dev.cajeta.graph;
+
+/**
+ * A Louvain run's result (spec §5.7, plan 4.2.3): the final node-to-
+ * community assignment, the DENDROGRAM of merge levels (each level an
+ * original-node-shaped label array, coarsening upward; the last level is
+ * the final partition), community sizes, and the partition's modularity
+ * at the run's resolution and weights.
+ */
+public final class LouvainResult {
+
+    private int64 n;
+    private int64 nLevels;
+    /** Levels flattened row-major: level l labels at [l*n .. l*n+n). */
+    private int64[] levels;
+    private float64 q;
+    private int64 nComm;
+    private int64[] sizes;
+
+    public LouvainResult(int64 n, int64 nLevels, #int64[] levels,
+                         float64 q, int64 nComm, #int64[] sizes) {
+        this.n = n;
+        this.nLevels = nLevels;
+        this.levels #= levels;
+        this.q = q;
+        this.nComm = nComm;
+        this.sizes #= sizes;
+    }
+
+    /** Final labels, node-index shaped (owned copy). */
+    public #int64[] labels() {
+        return this.labelsAtLevel(this.nLevels - (int64) 1);
+    }
+
+    /** Number of merge levels (>= 1). */
+    public int64 levelCount() {
+        return this.nLevels;
+    }
+
+    /** Labels after level `l` (0-based; owned copy, original-node shaped). */
+    public #int64[] labelsAtLevel(int64 l) {
+        if (l < 0 || l >= this.nLevels) {
+            throw heap GraphException("labelsAtLevel: out of range");
+        }
+        int64[] out = heap int64[this.n];
+        int64 base = l * this.n;
+        int64 i = 0;
+        while (i < this.n) {
+            out[i] = this.levels[base + i];
+            i = i + 1;
+        }
+        return #out;
+    }
+
+    /** Number of communities in the final partition (§5.7). */
+    public int64 communityCount() {
+        return this.nComm;
+    }
+
+    /** Size of final community `c` (§5.7). */
+    public int64 sizeOf(int64 c) {
+        if (c < 0 || c >= this.nComm) {
+            throw heap GraphException("sizeOf: no such community");
+        }
+        return this.sizes[c];
+    }
+
+    /** Modularity of the final partition at the run's γ and weights. */
+    public float64 modularity() {
+        return this.q;
+    }
+}

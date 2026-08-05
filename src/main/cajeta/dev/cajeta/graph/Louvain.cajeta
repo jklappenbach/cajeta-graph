@@ -1,0 +1,481 @@
+package dev.cajeta.graph;
+
+import cajeta.math.random.Generator;
+import cajeta.math.Tensor;
+
+/**
+ * Louvain community detection (spec §5.1–§5.7): greedy modularity
+ * optimization — local moves in a SEEDED node order until no move
+ * improves, then aggregation into super-nodes, repeated until a level
+ * yields no improvement.
+ *
+ * Louvain's outcome depends on visit order, so a seed is part of the
+ * call: the same seed reproduces the partition EXACTLY (§5.4, §9.5);
+ * an unseeded run does not exist in this API. Resolution follows §5.3
+ * (γ scales the null-model term; γ = 1 is standard modularity — NOTE
+ * python-louvain's parameter is the inverted convention, a recorded
+ * §1.3 finding). Weights are a named attribute (§5.6, §2.4). An initial
+ * partition seeds level 0 (§5.5). Undirected only, loudly (python-
+ * louvain's scope; no silent symmetrization).
+ */
+public final class Louvain {
+
+    /** Louvain at γ = 1, unweighted, from singletons. */
+    public static #LouvainResult run(Graph g, uint64 seed) {
+        int64[] none = heap int64[0];
+        return Louvain.full(g, seed, 1.0, "", none);
+    }
+
+    /**
+     * The full form: `weightAttr` `""` = unweighted; `init` of length 0
+     * = singleton start, else a starting partition (§5.5).
+     */
+    public static #LouvainResult full(Graph g, uint64 seed,
+                                      float64 resolution, String weightAttr,
+                                      int64[] init) {
+        if (g.isDirected()) {
+            throw heap GraphException(
+                "louvain: directed graph — Louvain here is the undirected "
+                + "notion; build an undirected graph");
+        }
+        int64 n = g.nodeCount();
+        if (n == 0) {
+            int64[] noLevels = heap int64[0];
+            int64[] noSizes = heap int64[0];
+            return #heap LouvainResult((int64) 0, (int64) 0, #noLevels,
+                0.0, (int64) 0, #noSizes);
+        }
+        boolean useW = weightAttr.count() > 0;
+        Generator gen = heap Generator(seed);
+
+        // ---- level-graph state (aggregated; starts as the input graph)
+        int64 cn = n;                       // super-node count this level
+        int64 ne = g.edgeCount();
+        int64[] eu = heap int64[ne];
+        int64[] ev = heap int64[ne];
+        float64[] ew = heap float64[ne];
+        float64[] selfW = heap float64[cn]; // aggregated internal weight
+        int64 e = 0;
+        int64 mEdges = 0;
+        float64 m = 0.0;
+        while (e < ne) {
+            int64 u = g.edgeSrc(e);
+            int64 v = g.edgeDst(e);
+            float64 w = 1.0;
+            if (useW) {
+                w = g.edgeAttrByEid(e, weightAttr);
+                if (w < 0.0) {
+                    throw heap GraphException("louvain: negative weight");
+                }
+            }
+            m = m + w;
+            if (u == v) {
+                selfW[u] = selfW[u] + w;
+            } else {
+                eu[mEdges] = u;
+                ev[mEdges] = v;
+                ew[mEdges] = w;
+                mEdges = mEdges + 1;
+            }
+            e = e + 1;
+        }
+        if (m == 0.0) {
+            // No edges: every node its own community.
+            int64[] one = heap int64[n];
+            int64[] sizes = heap int64[n];
+            int64 i = 0;
+            while (i < n) {
+                one[i] = i;
+                sizes[i] = 1;
+                i = i + 1;
+            }
+            return #heap LouvainResult(n, (int64) 1, #one, 0.0, n, #sizes);
+        }
+
+        // ---- global composition + recorded levels
+        int64[] global = heap int64[n];     // original node -> super-node
+        int64 i = 0;
+        while (i < n) {
+            global[i] = i;
+            i = i + 1;
+        }
+        int64[] levelsFlat = heap int64[n * n];   // <= n levels
+        int64 nLevels = 0;
+        float64 qPrev = -1.0;
+
+        // Optional §5.5 initial partition for the FIRST level
+        // (single-initialized: length 0 means "start from singletons").
+        int64[] startComm = Louvain.initialComm(init, n);
+
+        while (true) {
+            // ---- build level adjacency (CSR-ish, from the edge list)
+            int64[] deg = heap int64[cn];
+            e = 0;
+            while (e < mEdges) {
+                deg[eu[e]] = deg[eu[e]] + 1;
+                deg[ev[e]] = deg[ev[e]] + 1;
+                e = e + 1;
+            }
+            int64[] aOff = heap int64[cn + (int64) 1];
+            int64 acc = 0;
+            i = 0;
+            while (i < cn) {
+                aOff[i] = acc;
+                acc = acc + deg[i];
+                deg[i] = 0;
+                i = i + 1;
+            }
+            aOff[cn] = acc;
+            int64[] aNbr = heap int64[acc + (int64) 1];
+            float64[] aW = heap float64[acc + (int64) 1];
+            e = 0;
+            while (e < mEdges) {
+                int64 u = eu[e];
+                int64 v = ev[e];
+                aNbr[aOff[u] + deg[u]] = v;
+                aW[aOff[u] + deg[u]] = ew[e];
+                deg[u] = deg[u] + 1;
+                aNbr[aOff[v] + deg[v]] = u;
+                aW[aOff[v] + deg[v]] = ew[e];
+                deg[v] = deg[v] + 1;
+                e = e + 1;
+            }
+            // strengths: neighbours + self-loop twice
+            float64[] k = heap float64[cn];
+            i = 0;
+            while (i < cn) {
+                float64 s = 2.0 * selfW[i];
+                int64 a = aOff[i];
+                while (a < aOff[i + (int64) 1]) {
+                    s = s + aW[a];
+                    a = a + 1;
+                }
+                k[i] = s;
+                i = i + 1;
+            }
+            // ---- one-level local moves
+            int64[] comm = heap int64[cn];
+            i = 0;
+            while (i < cn) {
+                comm[i] = i;
+                i = i + 1;
+            }
+            if (nLevels == 0 && (int64) startComm.count() == cn) {
+                i = 0;
+                while (i < cn) {
+                    comm[i] = startComm[i];
+                    i = i + 1;
+                }
+            }
+            float64[] tot = heap float64[cn];
+            i = 0;
+            while (i < cn) {
+                tot[comm[i]] = tot[comm[i]] + k[i];
+                i = i + 1;
+            }
+            Tensor<int64> perm = gen.permutation(cn);
+            float64[] cw = heap float64[cn];
+            int64[] touched = heap int64[cn];
+            boolean movedAny = false;
+            int64 sweep = 0;
+            while (sweep < (int64) 1000) {
+                boolean moved = false;
+                int64 pi = 0;
+                while (pi < cn) {
+                    int64 u = perm.get1(pi);
+                    int64 c0 = comm[u];
+                    // neighbour-community weights
+                    int64 nTouched = 0;
+                    int64 a = aOff[u];
+                    while (a < aOff[u + (int64) 1]) {
+                        int64 v = aNbr[a];
+                        if (v != u) {
+                            int64 cv = comm[v];
+                            if (cw[cv] == 0.0) {
+                                touched[nTouched] = cv;
+                                nTouched = nTouched + 1;
+                            }
+                            cw[cv] = cw[cv] + aW[a];
+                        }
+                        a = a + 1;
+                    }
+                    // remove u from its community
+                    tot[c0] = tot[c0] - k[u];
+                    // best community: current-first (stay on ties)
+                    float64 gain0 = cw[c0]
+                        - resolution * tot[c0] * k[u] / (2.0 * m);
+                    int64 best = c0;
+                    float64 bestGain = gain0;
+                    int64 t = 0;
+                    while (t < nTouched) {
+                        int64 c = touched[t];
+                        if (c != c0) {
+                            float64 gain = cw[c]
+                                - resolution * tot[c] * k[u] / (2.0 * m);
+                            if (gain > bestGain + 0.0000000001) {
+                                bestGain = gain;
+                                best = c;
+                            }
+                        }
+                        t = t + 1;
+                    }
+                    tot[best] = tot[best] + k[u];
+                    comm[u] = best;
+                    if (best != c0) {
+                        moved = true;
+                        movedAny = true;
+                    }
+                    // clear scratch
+                    t = 0;
+                    while (t < nTouched) {
+                        cw[touched[t]] = 0.0;
+                        t = t + 1;
+                    }
+                    pi = pi + 1;
+                }
+                if (!moved) {
+                    break;
+                }
+                sweep = sweep + 1;
+            }
+            if (!movedAny && nLevels > 0) {
+                break;
+            }
+            // ---- renumber communities densely and compose globals
+            int64[] dense = Louvain.renumber(comm, cn);
+            int64 newCn = 0;
+            i = 0;
+            while (i < cn) {
+                if (dense[i] + (int64) 1 > newCn) {
+                    newCn = dense[i] + (int64) 1;
+                }
+                i = i + 1;
+            }
+            i = 0;
+            while (i < n) {
+                global[i] = dense[global[i]];
+                i = i + 1;
+            }
+            // record the level
+            int64 base = nLevels * n;
+            i = 0;
+            while (i < n) {
+                levelsFlat[base + i] = global[i];
+                i = i + 1;
+            }
+            nLevels = nLevels + 1;
+            // convergence check on true modularity
+            float64 q = Modularity.at(g, Louvain.slice(levelsFlat, base, n),
+                resolution, weightAttr);
+            if (qPrev >= -0.5 && q - qPrev < 0.0000001) {
+                break;
+            }
+            qPrev = q;
+            if (newCn == cn) {
+                break;
+            }
+            // ---- aggregate: communities become super-nodes
+            float64[] nSelf = heap float64[newCn];
+            i = 0;
+            while (i < cn) {
+                nSelf[dense[i]] = nSelf[dense[i]] + selfW[i];
+                i = i + 1;
+            }
+            // aggregate inter-community edges via a dense map per pass
+            int64[] neu = heap int64[mEdges + (int64) 1];
+            int64[] nev = heap int64[mEdges + (int64) 1];
+            float64[] nw = heap float64[mEdges + (int64) 1];
+            int64 nm = 0;
+            // simple quadratic-free aggregation: bucket by (cu, cv) using
+            // sort-free accumulation through a hash-like open scan over a
+            // per-source slot array
+            float64[] slotW = heap float64[newCn];
+            int64[] slotTouch = heap int64[newCn];
+            int64 srcC = 0;
+            // group edges by source community in two passes
+            int64[] byCu = heap int64[newCn + (int64) 1];
+            e = 0;
+            while (e < mEdges) {
+                int64 cu = dense[eu[e]];
+                int64 cv = dense[ev[e]];
+                if (cu != cv) {
+                    int64 lo = cu;
+                    if (cv < lo) {
+                        lo = cv;
+                    }
+                    byCu[lo] = byCu[lo] + 1;
+                } else {
+                    nSelf[cu] = nSelf[cu] + ew[e];
+                }
+                e = e + 1;
+            }
+            int64[] gOff = heap int64[newCn + (int64) 1];
+            acc = 0;
+            i = 0;
+            while (i < newCn) {
+                gOff[i] = acc;
+                acc = acc + byCu[i];
+                byCu[i] = 0;
+                i = i + 1;
+            }
+            gOff[newCn] = acc;
+            int64[] gDst = heap int64[acc + (int64) 1];
+            float64[] gW = heap float64[acc + (int64) 1];
+            e = 0;
+            while (e < mEdges) {
+                int64 cu = dense[eu[e]];
+                int64 cv = dense[ev[e]];
+                if (cu != cv) {
+                    int64 lo = cu;
+                    int64 hi = cv;
+                    if (cv < lo) {
+                        lo = cv;
+                        hi = cu;
+                    }
+                    gDst[gOff[lo] + byCu[lo]] = hi;
+                    gW[gOff[lo] + byCu[lo]] = ew[e];
+                    byCu[lo] = byCu[lo] + 1;
+                }
+                e = e + 1;
+            }
+            // merge duplicates within each source bucket via slot scan
+            srcC = 0;
+            while (srcC < newCn) {
+                int64 nT = 0;
+                int64 a = gOff[srcC];
+                while (a < gOff[srcC + (int64) 1]) {
+                    int64 d = gDst[a];
+                    if (slotW[d] == 0.0) {
+                        slotTouch[nT] = d;
+                        nT = nT + 1;
+                    }
+                    slotW[d] = slotW[d] + gW[a];
+                    a = a + 1;
+                }
+                int64 t = 0;
+                while (t < nT) {
+                    int64 d = slotTouch[t];
+                    neu[nm] = srcC;
+                    nev[nm] = d;
+                    nw[nm] = slotW[d];
+                    slotW[d] = 0.0;
+                    nm = nm + 1;
+                    t = t + 1;
+                }
+                srcC = srcC + 1;
+            }
+            // Copy the aggregated level back INTO the standing buffers —
+            // aggregation only shrinks (nm <= mEdges <= ne, newCn <= cn),
+            // and rebinding the outer locals to loop-local arrays would
+            // dangle when the iteration scope drops them.
+            i = 0;
+            while (i < nm) {
+                eu[i] = neu[i];
+                ev[i] = nev[i];
+                ew[i] = nw[i];
+                i = i + 1;
+            }
+            mEdges = nm;
+            i = 0;
+            while (i < newCn) {
+                selfW[i] = nSelf[i];
+                i = i + 1;
+            }
+            cn = newCn;
+        }
+        if (nLevels == 0) {
+            // No move ever improved: the (possibly initial) partition
+            // stands as the single level.
+            int64 base = 0;
+            i = 0;
+            while (i < n) {
+                levelsFlat[base + i] = global[i];
+                i = i + 1;
+            }
+            nLevels = 1;
+        }
+        // ---- final labels, sizes, modularity
+        int64 lastBase = (nLevels - (int64) 1) * n;
+        int64[] fin = Louvain.slice(levelsFlat, lastBase, n);
+        int64 nComm = Louvain.countOf(fin);
+        int64[] sizes = heap int64[nComm];
+        i = 0;
+        while (i < n) {
+            sizes[fin[i]] = sizes[fin[i]] + 1;
+            i = i + 1;
+        }
+        float64 q = Modularity.at(g, fin, resolution, weightAttr);
+        int64[] levelsOut = heap int64[nLevels * n];
+        i = 0;
+        while (i < nLevels * n) {
+            levelsOut[i] = levelsFlat[i];
+            i = i + 1;
+        }
+        return #heap LouvainResult(n, nLevels, #levelsOut, q, nComm,
+            #sizes);
+    }
+
+    /** The §5.5 starting partition: renumbered `init`, or length 0 when
+     *  no initial partition was supplied (start from singletons). */
+    static #int64[] initialComm(int64[] init, int64 n) {
+        if ((int64) init.count() == 0) {
+            int64[] none = heap int64[0];
+            return #none;
+        }
+        if ((int64) init.count() != n) {
+            throw heap GraphException(
+                "louvain: init partition length != node count");
+        }
+        return Louvain.renumber(init, n);
+    }
+
+    /** Dense renumbering of arbitrary labels to 0..k-1 by first sight. */
+    static #int64[] renumber(int64[] labels, int64 n) {
+        int64[] map = heap int64[n];
+        int64 i = 0;
+        while (i < n) {
+            map[i] = (int64) -1;
+            i = i + 1;
+        }
+        int64[] out = heap int64[n];
+        int64 next = 0;
+        i = 0;
+        while (i < n) {
+            int64 l = labels[i];
+            if (l < 0 || l >= n) {
+                throw heap GraphException("louvain: label out of range");
+            }
+            if (map[l] < 0) {
+                map[l] = next;
+                next = next + 1;
+            }
+            out[i] = map[l];
+            i = i + 1;
+        }
+        return #out;
+    }
+
+    /** Number of distinct labels in a dense label array. */
+    public static int64 countOf(int64[] labels) {
+        int64 maxL = (int64) -1;
+        int64 i = 0;
+        while (i < labels.count()) {
+            if (labels[i] > maxL) {
+                maxL = labels[i];
+            }
+            i = i + 1;
+        }
+        return maxL + (int64) 1;
+    }
+
+    /** Owned copy of `src[base .. base+n)`. */
+    static #int64[] slice(int64[] src, int64 base, int64 n) {
+        int64[] out = heap int64[n];
+        int64 i = 0;
+        while (i < n) {
+            out[i] = src[base + i];
+            i = i + 1;
+        }
+        return #out;
+    }
+}

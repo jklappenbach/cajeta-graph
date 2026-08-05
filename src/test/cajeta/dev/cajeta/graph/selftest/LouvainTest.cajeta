@@ -1,0 +1,296 @@
+package dev.cajeta.graph.selftest;
+
+import dev.cajeta.unit.Assert;
+import dev.cajeta.graph.Graph;
+import dev.cajeta.graph.Modularity;
+import dev.cajeta.graph.Louvain;
+import dev.cajeta.graph.LouvainResult;
+
+/**
+ * ml-graph-analytics plan 4.1 — modularity + Louvain, pinned against
+ * NetworkX 3.6.1 `community.modularity` and python-louvain 0.16
+ * (tools/fixtures/gen_louvain.py):
+ *
+ *   barbell (two 5-cliques + bridge), two-clique partition: Q 0.4523809524
+ *     — python-louvain (seed 7) recovers exactly the cliques, same Q.
+ *   3-triangle chain, triangle partition: Q 0.4834710744
+ *     — at resolution 0.3 the same partition scores 0.7177685950.
+ *   weighted triangle pair (w=5 internal, 0.5 bridge): Q 0.4836065574.
+ *
+ * Resolution follows the spec §5.3 convention (γ scales the NULL-MODEL
+ * term, NetworkX's `louvain_communities`): higher γ → more, smaller
+ * communities. (python-louvain's parameter is the INVERTED convention —
+ * a §1.3-class finding, recorded here, not a bug on either side.)
+ * NetworkX louvain pins for the triangle chain: γ 0.05 → 1 community,
+ * γ 1.0 → 3, γ 4.0 → 7.
+ */
+public class LouvainTest {
+
+    public LouvainTest() { return; }
+
+    static boolean near(float64 a, float64 b) {
+        float64 d = a - b;
+        if (d < 0.0) {
+            d = -d;
+        }
+        return d < 0.000000001;
+    }
+
+    static void cliqueOf(Graph g, String a, String b, String c) {
+        g.addEdge(a, b);
+        g.addEdge(a, c);
+        g.addEdge(b, c);
+    }
+
+    /** Two 5-cliques a0..a4, b0..b4 joined by a0-b0. */
+    static #Graph barbell() {
+        Graph g = Graph.undirected();
+        String[] an = heap String[5];
+        an[0] = "a0"; an[1] = "a1"; an[2] = "a2"; an[3] = "a3"; an[4] = "a4";
+        String[] bn = heap String[5];
+        bn[0] = "b0"; bn[1] = "b1"; bn[2] = "b2"; bn[3] = "b3"; bn[4] = "b4";
+        int32 i = 0;
+        while (i < 5) {
+            int32 j = i + 1;
+            while (j < 5) {
+                g.addEdge(an[i], an[j]);
+                g.addEdge(bn[i], bn[j]);
+                j = j + 1;
+            }
+            i = i + 1;
+        }
+        g.addEdge("a0", "b0");
+        return #g;
+    }
+
+    /** Chain of three triangles bridged a3-b1, b3-c1. */
+    static #Graph triangles() {
+        Graph g = Graph.undirected();
+        LouvainTest.cliqueOf(g, "a1", "a2", "a3");
+        LouvainTest.cliqueOf(g, "b1", "b2", "b3");
+        LouvainTest.cliqueOf(g, "c1", "c2", "c3");
+        g.addEdge("a3", "b1");
+        g.addEdge("b3", "c1");
+        return #g;
+    }
+
+    /** The barbell's two-clique labels (a* -> 0, b* -> 1). */
+    static #int64[] barbellKnown(Graph g) {
+        int64[] lab = heap int64[g.nodeCount()];
+        int64 i = 0;
+        while (i < g.nodeCount()) {
+            String id = g.nodeAt(i);
+            int64 c = 0;
+            if (id.startsWith("b")) {
+                c = 1;
+            }
+            lab[i] = c;
+            i = i + 1;
+        }
+        return #lab;
+    }
+
+    // 4.1.1 — modularity of known partitions matches NetworkX.
+    @Test
+    public void modularityMatchesNetworkX() {
+        Graph g = LouvainTest.barbell();
+        int64[] lab = LouvainTest.barbellKnown(g);
+        Assert.isTrue(LouvainTest.near(Modularity.of(g, lab),
+            0.4523809524));
+
+        Graph t = LouvainTest.triangles();
+        int64[] tl = heap int64[9];
+        int64 i = 0;
+        while (i < 9) {
+            String id = t.nodeAt(i);
+            int64 c = 0;
+            if (id.startsWith("b")) {
+                c = 1;
+            }
+            if (id.startsWith("c")) {
+                c = 2;
+            }
+            tl[i] = c;
+            i = i + 1;
+        }
+        Assert.isTrue(LouvainTest.near(Modularity.of(t, tl),
+            0.4834710744));
+        // §5.3 — resolution scales the null-model term; γ = 0.3 pin.
+        Assert.isTrue(LouvainTest.near(Modularity.at(t, tl, 0.3, ""),
+            0.7177685950));
+        // γ = 1 reproduces standard modularity exactly.
+        Assert.isTrue(Modularity.of(t, tl) == Modularity.at(t, tl, 1.0, ""));
+    }
+
+    // §5.6 — weighted modularity computes over weights, not counts.
+    @Test
+    public void weightedModularityMatchesNetworkX() {
+        Graph g = Graph.undirected();
+        LouvainTest.cliqueOf(g, "p1", "p2", "p3");
+        LouvainTest.cliqueOf(g, "q1", "q2", "q3");
+        g.addEdge("p1", "q1");
+        int64 e = 0;
+        while (e < g.edgeCount()) {
+            g.setEdgeAttrByEid(e, "weight", 5.0);
+            e = e + 1;
+        }
+        g.setEdgeAttr("p1", "q1", "weight", 0.5);
+        int64[] lab = heap int64[6];
+        int64 i = 0;
+        while (i < 6) {
+            int64 c = 0;
+            if (g.nodeAt(i).startsWith("q")) {
+                c = 1;
+            }
+            lab[i] = c;
+            i = i + 1;
+        }
+        Assert.isTrue(LouvainTest.near(
+            Modularity.weighted(g, lab, "weight"), 0.4836065574));
+    }
+
+    // 4.1.2 — obvious community structure is recovered exactly.
+    @Test
+    public void louvainRecoversObviousCommunities() {
+        Graph g = LouvainTest.barbell();
+        LouvainResult r = Louvain.run(g, (uint64) 42);
+        Assert.equals((int64) 2, r.communityCount());
+        int64[] lab = r.labels();
+        // Every a* shares a0's label; every b* shares b0's; they differ.
+        int64 la = lab[g.indexOf("a0")];
+        int64 lb = lab[g.indexOf("b0")];
+        Assert.isTrue(la != lb);
+        int64 i = 0;
+        while (i < g.nodeCount()) {
+            int64 want = la;
+            if (g.nodeAt(i).startsWith("b")) {
+                want = lb;
+            }
+            Assert.equals(want, lab[i]);
+            i = i + 1;
+        }
+        // 5.7 — sizes are directly available.
+        Assert.equals((int64) 5, r.sizeOf(la));
+        Assert.equals((int64) 5, r.sizeOf(lb));
+        // The recovered partition scores the pinned modularity.
+        Assert.isTrue(LouvainTest.near(r.modularity(), 0.4523809524));
+    }
+
+    // 4.1.3 — a fixed seed reproduces EXACTLY; Louvain is stochastic, so
+    // an unseeded result is not a fixture.
+    @Test
+    public void seededRunsReproduceExactly() {
+        Graph g = LouvainTest.triangles();
+        LouvainResult r1 = Louvain.run(g, (uint64) 42);
+        LouvainResult r2 = Louvain.run(g, (uint64) 42);
+        int64[] l1 = r1.labels();
+        int64[] l2 = r2.labels();
+        int64 i = 0;
+        while (i < g.nodeCount()) {
+            Assert.equals(l1[i], l2[i]);
+            i = i + 1;
+        }
+        Assert.isTrue(r1.modularity() == r2.modularity());
+    }
+
+    // 4.1.4 — resolution moves community count in the expected direction
+    // (§5.3 convention: higher γ → smaller communities). NetworkX louvain
+    // pins on this graph: γ 0.05 → 1, γ 1.0 → 3, γ 4.0 → 7.
+    @Test
+    public void resolutionChangesCountInTheExpectedDirection() {
+        Graph g = LouvainTest.triangles();
+        int64[] none = heap int64[0];
+        LouvainResult lo = Louvain.full(g, (uint64) 42, 0.05, "", none);
+        LouvainResult mid = Louvain.full(g, (uint64) 42, 1.0, "", none);
+        LouvainResult hi = Louvain.full(g, (uint64) 42, 4.0, "", none);
+        Assert.equals((int64) 1, lo.communityCount());
+        Assert.equals((int64) 3, mid.communityCount());
+        Assert.isTrue(hi.communityCount() > (int64) 3);
+    }
+
+    // 4.1.5 — against python-louvain 0.16 on the shared barbell fixture:
+    // it recovers exactly the two cliques (seed 7) with Q 0.4523809524,
+    // and so do we. (Its resolution parameter is inverted vs §5.3 — a
+    // recorded finding, not asserted here.)
+    @Test
+    public void agreesWithPythonLouvainOnTheSharedFixture() {
+        Graph g = LouvainTest.barbell();
+        LouvainResult r = Louvain.run(g, (uint64) 7);
+        Assert.equals((int64) 2, r.communityCount());
+        int64[] lab = r.labels();
+        Assert.equals(lab[g.indexOf("a0")], lab[g.indexOf("a4")]);
+        Assert.equals(lab[g.indexOf("b0")], lab[g.indexOf("b4")]);
+        Assert.isTrue(lab[g.indexOf("a0")] != lab[g.indexOf("b0")]);
+        Assert.isTrue(LouvainTest.near(r.modularity(), 0.4523809524));
+    }
+
+    // 4.2.3 — the dendrogram of merge levels is exposed, not only the
+    // final partition; the last level IS the final partition.
+    @Test
+    public void dendrogramExposesMergeLevels() {
+        Graph g = LouvainTest.barbell();
+        LouvainResult r = Louvain.run(g, (uint64) 42);
+        Assert.isTrue(r.levelCount() >= (int64) 1);
+        int64[] last = r.labelsAtLevel(r.levelCount() - (int64) 1);
+        int64[] fin = r.labels();
+        int64 i = 0;
+        while (i < g.nodeCount()) {
+            Assert.equals(fin[i], last[i]);
+            i = i + 1;
+        }
+        // Levels are coarsening: community count never increases.
+        int64 l = 0;
+        int64 prev = g.nodeCount();
+        while (l < r.levelCount()) {
+            int64 c = Louvain.countOf(r.labelsAtLevel(l));
+            Assert.isTrue(c <= prev);
+            prev = c;
+            l = l + 1;
+        }
+    }
+
+    // §5.5 — an initial partition is the starting point; starting at the
+    // optimum stays there with the pinned score.
+    @Test
+    public void initialPartitionIsRespected() {
+        Graph g = LouvainTest.barbell();
+        int64[] init = LouvainTest.barbellKnown(g);
+        LouvainResult r = Louvain.full(g, (uint64) 42, 1.0, "", init);
+        Assert.equals((int64) 2, r.communityCount());
+        Assert.isTrue(LouvainTest.near(r.modularity(), 0.4523809524));
+    }
+
+    // §5.6 — weighted Louvain names its attribute and uses weights.
+    @Test
+    public void weightedLouvainRecoversWeightedStructure() {
+        Graph g = Graph.undirected();
+        LouvainTest.cliqueOf(g, "p1", "p2", "p3");
+        LouvainTest.cliqueOf(g, "q1", "q2", "q3");
+        g.addEdge("p1", "q1");
+        int64 e = 0;
+        while (e < g.edgeCount()) {
+            g.setEdgeAttrByEid(e, "weight", 5.0);
+            e = e + 1;
+        }
+        g.setEdgeAttr("p1", "q1", "weight", 0.5);
+        int64[] none = heap int64[0];
+        LouvainResult r = Louvain.full(g, (uint64) 42, 1.0, "weight", none);
+        Assert.equals((int64) 2, r.communityCount());
+        int64[] lab = r.labels();
+        Assert.equals(lab[g.indexOf("p1")], lab[g.indexOf("p3")]);
+        Assert.equals(lab[g.indexOf("q1")], lab[g.indexOf("q3")]);
+        Assert.isTrue(lab[g.indexOf("p1")] != lab[g.indexOf("q1")]);
+        Assert.isTrue(LouvainTest.near(r.modularity(), 0.4836065574));
+    }
+
+    // Directed graphs are loud: Louvain and modularity are undirected
+    // notions here (python-louvain's scope); no silent symmetrization.
+    @Test
+    public void directedGraphsAreLoud() {
+        Assert.assertThrows(() -> {
+            Graph g = Graph.directed();
+            g.addEdge("a", "b");
+            LouvainResult r = Louvain.run(g, (uint64) 1);
+        });
+    }
+}
