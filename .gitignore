@@ -1,3 +1,4 @@
 build/
 *.cja
 __pycache__/
+.cajeta/

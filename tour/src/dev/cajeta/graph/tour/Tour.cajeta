@@ -1,0 +1,448 @@
+package dev.cajeta.graph.tour;
+
+import cajeta.collection.ArrayList;
+import cajeta.nucleo.column.Column;
+import cajeta.nucleo.column.StringColumn;
+import cajeta.nucleo.frame.Table;
+import cajeta.nucleo.sparse.CsrMatrix;
+import dev.cajeta.graph.Centrality;
+import dev.cajeta.graph.Components;
+import dev.cajeta.graph.DistMatrix;
+import dev.cajeta.graph.Graph;
+import dev.cajeta.graph.GraphData;
+import dev.cajeta.graph.GraphLib;
+import dev.cajeta.graph.Louvain;
+import dev.cajeta.graph.LouvainResult;
+import dev.cajeta.graph.Modularity;
+import dev.cajeta.graph.PageRank;
+import dev.cajeta.graph.PathResult;
+import dev.cajeta.graph.ShortestPaths;
+import dev.cajeta.graph.Traversal;
+
+/**
+ * The cajeta-graph tour — a runnable walk through the full public surface:
+ * construction → traversal → components → shortest paths → centrality →
+ * PageRank → Louvain communities → the drawing boundary.
+ *
+ *     cajeta tour          # via the manifest task
+ *
+ * Every section prints what it demonstrates and CHECKS it (the tour doubles
+ * as a smoke test: it exits non-zero if any claim it makes stops being
+ * true). Narrative companion: docs/Tour.md.
+ *
+ * Every graph is built explicitly and every seeded algorithm gets an
+ * explicit seed — no files, no ambient RNG — so the tour behaves
+ * identically on every machine.
+ */
+/** Section 4's edge-list schema — the record IS the column contract.
+ *  (srcId/dstId, not src/dst: Table owns a `src` member and the per-column
+ *  accessor synthesis refuses to shadow it.) */
+record EdgeRow {
+    Utf8 srcId;
+    Utf8 dstId;
+    float64 w;
+}
+
+public final class Tour {
+
+    static int32 failures;
+
+    static void check(boolean ok, String what) {
+        if (ok) {
+            System.stdout.println("   ok: " + what);
+        } else {
+            System.stdout.println(" FAIL: " + what);
+            Tour.failures = Tour.failures + 1;
+        }
+    }
+
+    static void section(String title) {
+        System.stdout.println("");
+        System.stdout.println("== " + title + " ==");
+    }
+
+    static boolean near(float64 a, float64 b, float64 tol) {
+        float64 d = a - b;
+        if (d < 0.0) { d = -d; }
+        return d < tol;
+    }
+
+    /** The weighted a–g fixture (gen_traversal.py shape) + isolated h. */
+    static #Graph agGraph() {
+        Graph g = Graph.undirected();
+        g.addEdge("a", "b");
+        g.setEdgeAttr("a", "b", "weight", 1.0);
+        g.addEdge("b", "c");
+        g.setEdgeAttr("b", "c", "weight", 2.0);
+        g.addEdge("a", "d");
+        g.setEdgeAttr("a", "d", "weight", 4.0);
+        g.addEdge("b", "e");
+        g.setEdgeAttr("b", "e", "weight", 7.0);
+        g.addEdge("c", "f");
+        g.setEdgeAttr("c", "f", "weight", 3.0);
+        g.addEdge("d", "e");
+        g.setEdgeAttr("d", "e", "weight", 1.0);
+        g.addEdge("e", "f");
+        g.setEdgeAttr("e", "f", "weight", 1.0);
+        g.addEdge("f", "g");
+        g.setEdgeAttr("f", "g", "weight", 9.0);
+        g.addEdge("c", "g");
+        g.setEdgeAttr("c", "g", "weight", 1.0);
+        g.addNode("h");
+        return #g;
+    }
+
+    /** The dependency graph: app→lib1, app→lib2, tool→lib2, lib1→util,
+     *  lib2→util. util imports nothing — a rank sink. */
+    static #Graph depGraph() {
+        Graph g = Graph.directed();
+        g.addEdge("app", "lib1");
+        g.addEdge("app", "lib2");
+        g.addEdge("tool", "lib2");
+        g.addEdge("lib1", "util");
+        g.addEdge("lib2", "util");
+        return #g;
+    }
+
+    /** Star: s at the center, leaves l1..l4. */
+    static #Graph star() {
+        Graph g = Graph.undirected();
+        g.addEdge("s", "l1");
+        g.addEdge("s", "l2");
+        g.addEdge("s", "l3");
+        g.addEdge("s", "l4");
+        return #g;
+    }
+
+    static void cliqueOf(Graph g, String a, String b, String c) {
+        g.addEdge(a, b);
+        g.addEdge(a, c);
+        g.addEdge(b, c);
+    }
+
+    /** Two 5-cliques a0..a4, b0..b4 joined by a0-b0. */
+    static #Graph barbell() {
+        Graph g = Graph.undirected();
+        String[] an = heap String[5];
+        an[0] = "a0"; an[1] = "a1"; an[2] = "a2"; an[3] = "a3"; an[4] = "a4";
+        String[] bn = heap String[5];
+        bn[0] = "b0"; bn[1] = "b1"; bn[2] = "b2"; bn[3] = "b3"; bn[4] = "b4";
+        int32 i = 0;
+        while (i < 5) {
+            int32 j = i + 1;
+            while (j < 5) {
+                g.addEdge(an[i], an[j]);
+                g.addEdge(bn[i], bn[j]);
+                j = j + 1;
+            }
+            i = i + 1;
+        }
+        g.addEdge("a0", "b0");
+        return #g;
+    }
+
+    /** Chain of three triangles bridged a3-b1, b3-c1. */
+    static #Graph triangles() {
+        Graph g = Graph.undirected();
+        Tour.cliqueOf(g, "a1", "a2", "a3");
+        Tour.cliqueOf(g, "b1", "b2", "b3");
+        Tour.cliqueOf(g, "c1", "c2", "c3");
+        g.addEdge("a3", "b1");
+        g.addEdge("b3", "c1");
+        return #g;
+    }
+
+    public static int32 main() {
+        System.stdout.println("cajeta-graph tour — network analysis: "
+            + "construction to communities, v" + GraphLib.version());
+        Tour.failures = 0;
+
+        // ------------------------------------------------------------------
+        Tour.section("1. Construction — identity at the boundary, indices inside");
+        // Nodes are Strings at the API; internally each gets a contiguous
+        // index 0..n-1 in insertion order. That index is the join key for
+        // every array-shaped result in the library.
+        Graph g = Tour.agGraph();
+        Tour.check(g.nodeCount() == 8, "8 nodes (a..g + isolated h)");
+        Tour.check(g.edgeCount() == 9, "9 edges");
+        Tour.check(g.indexOf("a") == 0, "insertion order: a is index 0");
+        Tour.check(g.indexOf("zz") == -1, "an unknown id answers -1, never a throw");
+        int64 before = g.nodeCount();
+        g.addNode("a");
+        Tour.check(g.nodeCount() == before, "addNode is idempotent");
+        Tour.check(g.degree("b") == 3, "degree(b) = 3");
+        Tour.check(g.density() > 0.0, "density is defined (0 below 2 nodes)");
+
+        // ------------------------------------------------------------------
+        Tour.section("2. Directed vs undirected, and typed edges");
+        // The same edge set means different things: undirected (u,v)=(v,u);
+        // directed keeps them distinct. Edges optionally carry ONE interned
+        // type name — the cajeta-rag relation-graph shape.
+        Graph d = Tour.depGraph();
+        Tour.check(d.isDirected(), "dep graph is directed");
+        Tour.check(d.hasEdge("app", "lib1") && !d.hasEdge("lib1", "app"),
+            "app→lib1 exists, lib1→app does not");
+        Tour.check(d.outDegree("app") == 2 && d.inDegree("app") == 0,
+            "app: out 2, in 0");
+        Graph t = Graph.directed();
+        t.addTypedEdge("app", "lib1", "imports");
+        t.addTypedEdge("app", "svc", "calls");
+        t.addEdge("app", "cfg");
+        ArrayList<String> imports = t.neighborsByType("app", "imports");
+        Tour.check(imports.count() == 1, "neighborsByType filters to the one import");
+        Tour.check(t.edgeType("app", "cfg") == "", "untyped edges answer \"\"");
+        ArrayList<String> none = t.neighborsByType("app", "links-to");
+        Tour.check(none.count() == 0, "an unknown type is an empty list, not an error");
+
+        // ------------------------------------------------------------------
+        Tour.section("3. Edge attributes — named, and loud when missing");
+        // There is no implicit weight: every weighted algorithm names its
+        // attribute. Unset is a THROW at use, never a silent default.
+        Tour.check(g.hasEdgeAttr("a", "b", "weight"), "a-b carries 'weight'");
+        Tour.check(g.edgeAttr("f", "g", "weight") == 9.0, "f-g weight is 9.0");
+        Tour.check(!g.hasEdgeAttr("a", "b", "capacity"),
+            "an unset attribute is visible as absent");
+        int64 m = g.edgeCount();
+        g.addEdge("a", "b");
+        Tour.check(g.edgeCount() == m && g.edgeAttr("a", "b", "weight") == 1.0,
+            "duplicate addEdge updates — no parallel edge, attributes kept");
+
+        // ------------------------------------------------------------------
+        Tour.section("4. Construction from a Table edge list");
+        // NetworkX's from_pandas_edgelist shape: name the source and target
+        // string columns; remaining float64 columns attach by name as edge
+        // attributes. One row = one edge; nothing is stringified.
+        String[] sv = heap String[4];
+        sv[0] = "a"; sv[1] = "b"; sv[2] = "c"; sv[3] = "c";
+        String[] dv = heap String[4];
+        dv[0] = "b"; dv[1] = "c"; dv[2] = "a"; dv[3] = "d";
+        float64[] wv = heap float64[4];
+        wv[0] = 1.5; wv[1] = 2.0; wv[2] = 0.5; wv[3] = 3.0;
+        Table<EdgeRow> tab = heap Table<EdgeRow>(
+            StringColumn.of(sv), StringColumn.of(dv),
+            Column.of<float64>(wv));
+        String[] attrs = heap String[1];
+        attrs[0] = "w";
+        Graph gt = Graph.fromTableAttrs(tab, "srcId", "dstId", true, attrs);
+        Tour.check(gt.nodeCount() == 4 && gt.edgeCount() == 4,
+            "4 rows became 4 edges over 4 nodes");
+        Tour.check(gt.edgeAttr("c", "d", "w") == 3.0,
+            "the w column rode along as an edge attribute");
+
+        // ------------------------------------------------------------------
+        Tour.section("5. Traversal — deterministic by contract");
+        // Neighbour order is edge-insertion order, so BFS and DFS visit
+        // sequences are part of the API, not an accident of hashing.
+        ArrayList<String> bfs = Traversal.bfs(g, "a");
+        Tour.check(bfs.count() == 7, "BFS from a reaches 7 nodes (h excluded)");
+        Tour.check(bfs.get(0) == "a" && bfs.get(1) == "b" && bfs.get(2) == "d"
+            && bfs.get(3) == "c" && bfs.get(4) == "e" && bfs.get(5) == "f"
+            && bfs.get(6) == "g", "BFS order is a b d c e f g");
+        ArrayList<String> dfs = Traversal.dfs(g, "a");
+        Tour.check(dfs.get(0) == "a" && dfs.get(1) == "b" && dfs.get(2) == "c"
+            && dfs.get(3) == "f" && dfs.get(4) == "e" && dfs.get(5) == "d"
+            && dfs.get(6) == "g", "DFS preorder is a b c f e d g");
+        ArrayList<String> bfs2 = Traversal.bfs(g, "a");
+        Tour.check(bfs2.get(3) == bfs.get(3), "a second run reproduces it exactly");
+
+        // ------------------------------------------------------------------
+        Tour.section("6. Components — connected, weak, strong");
+        // Labels are index-shaped int64[], component ids in discovery order
+        // from node 0. The directed notions are separate verbs; asking the
+        // wrong one is a loud error, not a silent reinterpretation.
+        int64[] cc = Components.connected(g);
+        Tour.check(Components.componentCount(cc) == 2,
+            "a-g is one component, h is its own");
+        Graph sc = Graph.directed();
+        sc.addEdge("q", "w");
+        sc.addEdge("w", "x");
+        sc.addEdge("x", "y");
+        sc.addEdge("y", "z");
+        sc.addEdge("z", "x");
+        sc.addNode("v");
+        int64[] weak = Components.weaklyConnected(sc);
+        Tour.check(Components.componentCount(weak) == 2,
+            "weakly: {q,w,x,y,z} and {v}");
+        int64[] strong = Components.stronglyConnected(sc);
+        Tour.check(Components.componentCount(strong) == 4,
+            "strongly (Kosaraju): {q}, {w}, {x,y,z}, {v}");
+        Tour.check(strong[sc.indexOf("x")] == strong[sc.indexOf("z")],
+            "the x→y→z→x cycle is one strong component");
+
+        // ------------------------------------------------------------------
+        Tour.section("7. Shortest paths — hops or named weights");
+        // bfsPath counts hops; dijkstra sums a NAMED attribute (and refuses
+        // negative weights). Unreachable is an explicit answer you must
+        // check — distance() on an unreachable result throws.
+        PathResult ph = ShortestPaths.bfsPath(g, "a", "g");
+        Tour.check(ph.reachable() && ph.distance() == 3.0,
+            "a→g is 3 hops unweighted");
+        PathResult pw = ShortestPaths.dijkstra(g, "a", "g", "weight");
+        Tour.check(pw.distance() == 4.0, "a→g weighted distance is 4.0");
+        ArrayList<String> path = pw.path();
+        Tour.check(path.get(0) == "a" && path.get(1) == "b"
+            && path.get(2) == "c" && path.get(3) == "g",
+            "the weighted path is a b c g");
+        PathResult pu = ShortestPaths.dijkstra(g, "a", "h", "weight");
+        Tour.check(!pu.reachable(), "a→h is explicitly unreachable");
+
+        // ------------------------------------------------------------------
+        Tour.section("8. All-pairs distances");
+        // BFS (or Dijkstra) from every node into a DistMatrix, indexed by
+        // node index. Unreachable pairs answer reachableAt() false; distAt
+        // throws rather than minting an infinity.
+        DistMatrix mm = ShortestPaths.allPairs(g);
+        int64 ai = g.indexOf("a");
+        Tour.check(mm.distAt(ai, g.indexOf("g")) == 3.0, "hops a→g = 3");
+        Tour.check(!mm.reachableAt(ai, g.indexOf("h")), "a→h unreachable pair");
+        DistMatrix mw = ShortestPaths.allPairsWeighted(g, "weight");
+        Tour.check(mw.distAt(ai, g.indexOf("g")) == 4.0, "weighted a→g = 4.0");
+
+        // ------------------------------------------------------------------
+        Tour.section("9. Centrality — who matters, four ways");
+        // All index-shaped float64[], NetworkX 3.6.1 conventions. The star
+        // makes each measure hand-checkable.
+        Graph s = Tour.star();
+        float64[] dc = Centrality.degree(s);
+        Tour.check(dc[s.indexOf("s")] == 1.0 && dc[s.indexOf("l1")] == 0.25,
+            "degree: center 1.0, leaves 0.25");
+        float64[] ev = Centrality.eigenvector(s, (int64) 100, 0.000001);
+        Tour.check(Tour.near(ev[s.indexOf("s")], 0.7071, 0.001),
+            "eigenvector: center ~0.7071 (no defaults — maxIter and tol are yours)");
+        float64[] bw = Centrality.betweenness(s, false);
+        Tour.check(bw[s.indexOf("s")] == 6.0, "betweenness raw: center 6.0");
+        float64[] bn = Centrality.betweenness(s, true);
+        Tour.check(bn[s.indexOf("s")] == 1.0, "normalized: center exactly 1.0");
+        float64[] cl = Centrality.closeness(g);
+        Tour.check(cl[g.indexOf("h")] == 0.0, "closeness: an isolated node is 0");
+
+        // ------------------------------------------------------------------
+        Tour.section("10. Sampled betweenness — the scaling escape hatch");
+        // Exact Brandes is Θ(n·m); seeded source-sampling is Θ(k·m) with
+        // error O(1/√k). k = n IS exact — same numbers, bit for bit.
+        float64[] exact = Centrality.betweenness(g, true);
+        float64[] full = Centrality.betweennessSampled(g, (int64) 8,
+            (uint64) 42, true);
+        boolean same = true;
+        int64 i = 0;
+        while (i < 8) {
+            if (!Tour.near(exact[i], full[i], 0.000000001)) { same = false; }
+            i = i + 1;
+        }
+        Tour.check(same, "k = n reproduces exact betweenness");
+        float64[] half = Centrality.betweennessSampled(g, (int64) 4,
+            (uint64) 42, true);
+        boolean close = true;
+        i = 0;
+        while (i < 8) {
+            if (!Tour.near(exact[i], half[i], 0.35)) { close = false; }
+            i = i + 1;
+        }
+        Tour.check(close, "k = n/2 stays within the stated error band");
+
+        // ------------------------------------------------------------------
+        Tour.section("11. PageRank — rank sinks redistribute");
+        // The dep graph's util imports nothing. A naive random surfer would
+        // pool there; the sink term redistributes through the
+        // personalization vector, so scores still sum to 1.
+        Graph dg = Tour.depGraph();
+        float64[] pr = PageRank.compute(dg);
+        Tour.check(Tour.near(pr[dg.indexOf("util")], 0.4210247037, 0.000005),
+            "util's rank matches NetworkX to 6 figures");
+        float64 sum = 0.0;
+        i = 0;
+        while (i < dg.nodeCount()) {
+            sum = sum + pr[i];
+            i = i + 1;
+        }
+        Tour.check(Tour.near(sum, 1.0, 0.000005), "scores sum to 1");
+        float64[] rv = PageRank.reversed(dg);
+        Tour.check(Tour.near(rv[dg.indexOf("app")], 0.3405109471, 0.000005),
+            "reversed(): app leads by OUTBOUND influence — no rebuild needed");
+        float64[] pers = heap float64[5];
+        pers[dg.indexOf("app")] = 1.0;
+        float64[] pp = PageRank.personalized(dg, pers);
+        Tour.check(pp[dg.indexOf("tool")] == 0.0,
+            "personalized on app: unreachable tool gets exactly 0");
+
+        // ------------------------------------------------------------------
+        Tour.section("12. Communities — Louvain, seeded and scored");
+        // The seed is MANDATORY: node visit order is a seeded Philox
+        // permutation, so the same seed reproduces the partition exactly.
+        // Modularity is a separate verb — score any partition, anyone's.
+        Graph bb = Tour.barbell();
+        LouvainResult lr = Louvain.run(bb, (uint64) 42);
+        Tour.check(lr.communityCount() == 2, "the barbell splits into 2 communities");
+        int64[] lab = lr.labels();
+        Tour.check(lr.sizeOf(lab[bb.indexOf("a0")]) == 5
+            && lr.sizeOf(lab[bb.indexOf("b0")]) == 5, "5 nodes each — the cliques");
+        Tour.check(Tour.near(lr.modularity(), 0.4523809524, 0.000000001),
+            "Q matches the NetworkX-scored value");
+        LouvainResult lr2 = Louvain.run(bb, (uint64) 42);
+        int64[] lab2 = lr2.labels();
+        boolean rep = true;
+        i = 0;
+        while (i < bb.nodeCount()) {
+            if (lab[i] != lab2[i]) { rep = false; }
+            i = i + 1;
+        }
+        Tour.check(rep, "same seed, same partition — exactly");
+        Tour.check(Tour.near(Modularity.of(bb, lab), lr.modularity(),
+            0.000000001), "Modularity.of scores the same partition identically");
+
+        // ------------------------------------------------------------------
+        Tour.section("13. Resolution and the dendrogram");
+        // γ scales the null model: low γ merges, high γ splits. Every level
+        // of the hierarchy is exposed, original-node shaped, coarsening
+        // upward to the final partition.
+        Graph tri = Tour.triangles();
+        int64[] noInit = heap int64[0];
+        LouvainResult lo = Louvain.full(tri, (uint64) 42, 0.05, "", noInit);
+        LouvainResult mid = Louvain.full(tri, (uint64) 42, 1.0, "", noInit);
+        LouvainResult hi = Louvain.full(tri, (uint64) 42, 4.0, "", noInit);
+        Tour.check(lo.communityCount() == 1, "γ = 0.05 merges everything");
+        Tour.check(mid.communityCount() == 3, "γ = 1 finds the three triangles");
+        Tour.check(hi.communityCount() > 3, "γ = 4 splits further");
+        int64 lc = mid.levelCount();
+        Tour.check(lc >= 1, "the dendrogram exposes its levels");
+        int64[] lastLevel = mid.labelsAtLevel(lc - (int64) 1);
+        Tour.check(Louvain.countOf(lastLevel) == mid.communityCount(),
+            "the last level IS the final partition");
+
+        // ------------------------------------------------------------------
+        Tour.section("14. The drawing boundary — data out, no drawing here");
+        // Nothing in this library draws or computes positions. Structure
+        // crosses to dev.cajeta.chart as plain data: identities + endpoint
+        // index arrays + optional weights/types; CsrMatrix for LinAlg.
+        Graph db = Graph.directed();
+        db.addTypedEdge("a", "b", "imports");
+        db.addEdge("b", "c");
+        db.setEdgeAttr("a", "b", "weight", 2.0);
+        db.setEdgeAttr("b", "c", "weight", 0.5);
+        ArrayList<String> ids = GraphData.nodeIds(db);
+        int64[] esrc = GraphData.edgeSources(db);
+        int64[] edst = GraphData.edgeTargets(db);
+        float64[] ew = GraphData.edgeWeights(db, "weight");
+        ArrayList<String> ety = GraphData.edgeTypes(db);
+        Tour.check(ids.count() == 3 && esrc.count() == 2 && edst.count() == 2,
+            "identities + endpoint index arrays");
+        Tour.check(ew[0] == 2.0 && ety.get(0) == "imports" && ety.get(1) == "",
+            "weights and type names ride along per edge");
+        Tour.check(ids.get((int32) esrc[0]) == "a",
+            "index-shaped results join back through the identity list");
+        CsrMatrix csr = db.toCsr();
+        Tour.check(csr.nnz() == 2 && csr.rowCount() == 3,
+            "toCsr(): directed nnz = m — the LinAlg on-ramp");
+        CsrMatrix csu = g.toCsr();
+        Tour.check(csu.nnz() == 18, "undirected: both orientations, nnz = 2m");
+
+        // ------------------------------------------------------------------
+        System.stdout.println("");
+        if (Tour.failures == 0) {
+            System.stdout.println("tour complete — every demonstrated claim held.");
+            return 0;
+        }
+        System.stdout.println("TOUR FAILED: " + Tour.failures + " claim(s) did not hold.");
+        return 1;
+    }
+}
