@@ -1,0 +1,91 @@
+package dev.cajeta.graph;
+
+import cajeta.collection.graph.IndexGraph;
+
+/**
+ * Bridge to the stdlib graph engine (`cajeta.collection.graph.IndexGraph`).
+ *
+ * `Graph` keeps everything that is THIS library's domain — String identity,
+ * weights, named attributes, typed edges, NetworkX update-on-duplicate
+ * semantics — and hands the pure index-level algorithm work (traversal
+ * orders, reachability, SCC) to the stdlib engine through the mirrors built
+ * here. `Graph`'s nodes are already dense insertion-order indices, so a
+ * mirror is a flat copy of the edge table: no interning, no hashing.
+ *
+ * Mirror cost is O(V+E) per call, the same order as any traversal that
+ * would run on it; algorithms that iterate (PageRank, Louvain) should build
+ * one mirror and reuse it.
+ */
+public final class Core {
+
+    /**
+     * The graph's edges as a directed IndexGraph: one arc per directed edge,
+     * both arcs per undirected edge (a self-loop stays a single arc — the
+     * traversal seen-guard makes the duplicate invisible anyway, so it is
+     * never added).
+     */
+    public static #IndexGraph mirror(Graph g) {
+        IndexGraph ig = heap IndexGraph();
+        ig.ensureNodes((int32) g.nodeCount());
+        int64 m = g.edgeCount();
+        int64 e = 0;
+        while (e < m) {
+            int32 s = (int32) g.edgeSrc(e);
+            int32 d = (int32) g.edgeDst(e);
+            ig.addEdge(s, d);
+            if (g.isDirected() == false) {
+                if (s != d) { ig.addEdge(d, s); }
+            }
+            e = e + 1;
+        }
+        return #ig;
+    }
+
+    /**
+     * The graph's edges with BOTH arcs regardless of direction — the
+     * symmetric closure used for weak/undirected connectivity, where SCC on
+     * the closure IS plain connectivity.
+     */
+    public static #IndexGraph symmetricMirror(Graph g) {
+        IndexGraph ig = heap IndexGraph();
+        ig.ensureNodes((int32) g.nodeCount());
+        int64 m = g.edgeCount();
+        int64 e = 0;
+        while (e < m) {
+            int32 s = (int32) g.edgeSrc(e);
+            int32 d = (int32) g.edgeDst(e);
+            ig.addEdge(s, d);
+            if (s != d) { ig.addEdge(d, s); }
+            e = e + 1;
+        }
+        return #ig;
+    }
+
+    /**
+     * Renumber labels to first-occurrence order scanning node 0 upward —
+     * the "discovery order from node 0" contract Components documents,
+     * independent of the engine's internal sweep order.
+     */
+    public static #int64[] renumber(int32[] labels) {
+        int32 n = (int32) labels.count();
+        int32[] map #= heap int32[n];
+        int32 i = 0;
+        while (i < n) {
+            map[i] = -1;
+            i = i + 1;
+        }
+        int64[] out #= heap int64[n];
+        int32 next = 0;
+        i = 0;
+        while (i < n) {
+            int32 l = labels[i];
+            if (map[l] == -1) {
+                map[l] = next;
+                next = next + 1;
+            }
+            out[i] = (int64) map[l];
+            i = i + 1;
+        }
+        return #out;
+    }
+}

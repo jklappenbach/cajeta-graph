@@ -1,6 +1,7 @@
 package dev.cajeta.graph;
 
 import cajeta.collection.ArrayList;
+import cajeta.collection.graph.IndexGraph;
 
 /**
  * Traversal (spec §3.1). Visit orders are DETERMINISTIC and documented:
@@ -17,35 +18,11 @@ public final class Traversal {
         if (s < 0) {
             throw heap GraphException("bfs: no such node");
         }
-        int64 n = g.nodeCount();
-        boolean[] seen = heap boolean[n];
-        int64[] queue = heap int64[n];
-        int64 head = 0;
-        int64 tail = 0;
-        queue[tail] = s;
-        tail = tail + 1;
-        seen[s] = true;
-        ArrayList<String> out = heap ArrayList<String>();
-        while (head < tail) {
-            int64 u = queue[head];
-            head = head + 1;
-            String id = g.nodeAt(u);
-            String own = id.substring(0, (int32) id.count());
-            out.add(#own);
-            int64 k = 0;
-            int64 kn = g.edgeCountAt(u);
-            while (k < kn) {
-                int64 e = g.edgeAt(u, k);
-                int64 v = g.edgeOther(e, u);
-                if (!seen[v]) {
-                    seen[v] = true;
-                    queue[tail] = v;
-                    tail = tail + 1;
-                }
-                k = k + 1;
-            }
-        }
-        return #out;
+        // Index-level order from the stdlib engine over the direction-aware
+        // mirror; this method's own work is identity mapping at the edges.
+        IndexGraph ig #= Core.mirror(g);
+        int32[] order #= ig.bfsOrder((int32) s);
+        return Traversal.identities(g, order);
     }
 
     /** Depth-first PREORDER from `source` (identities). */
@@ -54,36 +31,21 @@ public final class Traversal {
         if (s < 0) {
             throw heap GraphException("dfs: no such node");
         }
-        int64 n = g.nodeCount();
-        boolean[] seen = heap boolean[n];
-        // Iterative preorder: push neighbours in REVERSE insertion order so
-        // the first-inserted neighbour is explored first (recursive order).
-        int64[] stk = heap int64[n + g.edgeCount() * (int64) 2 + (int64) 1];
-        int64 top = 0;
-        stk[top] = s;
-        top = top + 1;
+        IndexGraph ig #= Core.mirror(g);
+        int32[] order #= ig.dfsOrder((int32) s);
+        return Traversal.identities(g, order);
+    }
+
+    /** Map an index order back to owned identity strings. */
+    static #ArrayList<String> identities(Graph g, int32[] order) {
         ArrayList<String> out = heap ArrayList<String>();
-        while (top > 0) {
-            top = top - 1;
-            int64 u = stk[top];
-            if (seen[u]) {
-                continue;
-            }
-            seen[u] = true;
-            String id = g.nodeAt(u);
+        int32 n = (int32) order.count();
+        int32 i = 0;
+        while (i < n) {
+            String id = g.nodeAt((int64) order[i]);
             String own = id.substring(0, (int32) id.count());
             out.add(#own);
-            int64 kn = g.edgeCountAt(u);
-            int64 k = kn - 1;
-            while (k >= 0) {
-                int64 e = g.edgeAt(u, k);
-                int64 v = g.edgeOther(e, u);
-                if (!seen[v]) {
-                    stk[top] = v;
-                    top = top + 1;
-                }
-                k = k - 1;
-            }
+            i = i + 1;
         }
         return #out;
     }
