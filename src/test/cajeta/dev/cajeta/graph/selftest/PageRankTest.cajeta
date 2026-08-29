@@ -30,7 +30,7 @@ public class PageRankTest {
 
     /** app->lib1, app->lib2, tool->lib2, lib1->util, lib2->util. */
     static #Graph dep() {
-        Graph g = Graph.directed();
+        Graph g #= Graph.directed();
         g.addEdge("app", "lib1");
         g.addEdge("app", "lib2");
         g.addEdge("tool", "lib2");
@@ -42,8 +42,8 @@ public class PageRankTest {
     // 3.1.4 — PageRank at damping 0.85 matches NetworkX.
     @Test
     public void pagerankMatchesNetworkX() {
-        Graph g = PageRankTest.dep();
-        float64[] pr = PageRank.compute(g);
+        Graph g #= PageRankTest.dep();
+        float64[] pr #= PageRank.compute(g);
         Assert.isTrue(PageRankTest.near(pr[g.indexOf("app")], 0.1015745384));
         Assert.isTrue(PageRankTest.near(pr[g.indexOf("lib1")], 0.1447438241));
         Assert.isTrue(PageRankTest.near(pr[g.indexOf("lib2")], 0.2310823954));
@@ -57,8 +57,8 @@ public class PageRankTest {
     // them toward the teleport floor (1-d)/n = 0.03).
     @Test
     public void sinksRedistributeRatherThanAbsorb() {
-        Graph g = PageRankTest.dep();
-        float64[] pr = PageRank.compute(g);
+        Graph g #= PageRankTest.dep();
+        float64[] pr #= PageRank.compute(g);
         float64 sum = 0.0;
         int64 i = 0;
         while (i < g.nodeCount()) {
@@ -74,10 +74,10 @@ public class PageRankTest {
     // tool is unreachable from app and gets exactly 0).
     @Test
     public void personalizedMatchesNetworkX() {
-        Graph g = PageRankTest.dep();
+        Graph g #= PageRankTest.dep();
         float64[] p = heap float64[5];
         p[g.indexOf("app")] = 1.0;
-        float64[] pr = PageRank.personalized(g, p);
+        float64[] pr #= PageRank.personalized(g, p);
         Assert.isTrue(PageRankTest.near(pr[g.indexOf("app")], 0.3887270714));
         Assert.isTrue(PageRankTest.near(pr[g.indexOf("lib1")], 0.1652094099));
         Assert.isTrue(PageRankTest.near(pr[g.indexOf("lib2")], 0.1652094099));
@@ -88,7 +88,7 @@ public class PageRankTest {
     // 3.1.6 — edge-weighted PageRank matches NetworkX.
     @Test
     public void weightedMatchesNetworkX() {
-        Graph g = Graph.directed();
+        Graph g #= Graph.directed();
         g.addEdge("app", "lib1");
         g.setEdgeAttr("app", "lib1", "w", 1.0);
         g.addEdge("app", "lib2");
@@ -99,7 +99,7 @@ public class PageRankTest {
         g.setEdgeAttr("lib1", "util", "w", 1.0);
         g.addEdge("lib2", "util");
         g.setEdgeAttr("lib2", "util", "w", 1.0);
-        float64[] pr = PageRank.weighted(g, "w");
+        float64[] pr #= PageRank.weighted(g, "w");
         Assert.isTrue(PageRankTest.near(pr[g.indexOf("lib1")], 0.1231591812));
         Assert.isTrue(PageRankTest.near(pr[g.indexOf("lib2")], 0.2526670382));
         Assert.isTrue(PageRankTest.near(pr[g.indexOf("util")], 0.4210247037));
@@ -109,9 +109,9 @@ public class PageRankTest {
     // is reachable WITHOUT rebuilding the graph (§4.4.3).
     @Test
     public void reverseRanksDifferentlyWithoutRebuilding() {
-        Graph g = PageRankTest.dep();
-        float64[] fwd = PageRank.compute(g);
-        float64[] rev = PageRank.reversed(g);
+        Graph g #= PageRankTest.dep();
+        float64[] fwd #= PageRank.compute(g);
+        float64[] rev #= PageRank.reversed(g);
         // Reverse pins (NetworkX on D.reverse()).
         Assert.isTrue(PageRankTest.near(rev[g.indexOf("app")], 0.3405109471));
         Assert.isTrue(PageRankTest.near(rev[g.indexOf("lib1")], 0.1722572757));
@@ -126,8 +126,8 @@ public class PageRankTest {
     @Test
     public void weightedWithMissingAttributeIsLoud() {
         Assert.assertThrows(() -> {
-            Graph g = PageRankTest.dep();
-            float64[] pr = PageRank.weighted(g, "w");
+            Graph g #= PageRankTest.dep();
+            float64[] pr #= PageRank.weighted(g, "w");
         });
     }
 }

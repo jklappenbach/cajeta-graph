@@ -43,7 +43,7 @@ public final class Traversal {
         int32 i = 0;
         while (i < n) {
             String id = g.nodeAt((int64) order[i]);
-            String own = id.substring(0, (int32) id.count());
+            String own #= id.substring(0, (int32) id.count());
             out.add(#own);
             i = i + 1;
         }

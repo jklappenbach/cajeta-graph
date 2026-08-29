@@ -33,8 +33,8 @@ public class TableConstructTest {
 
     @Test
     public void fromTableBuildsTheGraph() {
-        Table<EdgeRow> t = TableConstructTest.edgeList();
-        Graph g = Graph.fromTable(t, "srcId", "dstId", false);
+        Table<EdgeRow> t #= TableConstructTest.edgeList();
+        Graph g #= Graph.fromTable(t, "srcId", "dstId", false);
         Assert.equals((int64) 4, g.nodeCount());
         Assert.equals((int64) 4, g.edgeCount());
         Assert.isTrue(g.hasEdge("a", "b"));
@@ -46,10 +46,10 @@ public class TableConstructTest {
 
     @Test
     public void fromTableAttachesNamedAttributeColumns() {
-        Table<EdgeRow> t = TableConstructTest.edgeList();
+        Table<EdgeRow> t #= TableConstructTest.edgeList();
         String[] attrs = heap String[1];
         attrs[0] = "w";
-        Graph g = Graph.fromTableAttrs(t, "srcId", "dstId", true, attrs);
+        Graph g #= Graph.fromTableAttrs(t, "srcId", "dstId", true, attrs);
         Assert.isTrue(g.isDirected());
         Assert.equals((int64) 4, g.edgeCount());
         Assert.isTrue(g.edgeAttr("a", "b", "w") == 1.5);

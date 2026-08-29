@@ -279,7 +279,7 @@ public final class Centrality {
         if (kSample >= 0 && kSample < n) {
             nSources = kSample;
             Generator gen = heap Generator(seed);
-            Tensor<int64> pick = gen.choice(n, kSample, false);
+            Tensor<int64> pick #= gen.choice(n, kSample, false);
             i = 0;
             while (i < kSample) {
                 sources[i] = pick.get1(i);

@@ -19,7 +19,7 @@ public class GraphTest {
     // 1.1.1 — undirected: (u,v) IS (v,u); directed: they are distinct.
     @Test
     public void directedAndUndirectedDifferOnTheSameEdgeSet() {
-        Graph u = Graph.undirected();
+        Graph u #= Graph.undirected();
         u.addEdge("a", "b");
         Assert.isTrue(u.hasEdge("a", "b"));
         Assert.isTrue(u.hasEdge("b", "a"));
@@ -27,7 +27,7 @@ public class GraphTest {
         u.addEdge("b", "a");                       // the SAME edge
         Assert.equals((int64) 1, u.edgeCount());
 
-        Graph d = Graph.directed();
+        Graph d #= Graph.directed();
         d.addEdge("a", "b");
         Assert.isTrue(d.hasEdge("a", "b"));
         Assert.isFalse(d.hasEdge("b", "a"));
@@ -40,7 +40,7 @@ public class GraphTest {
     // contiguous indexing never leaks or mangles identity.
     @Test
     public void identityRoundTripsThroughContiguousIndexing() {
-        Graph g = Graph.undirected();
+        Graph g #= Graph.undirected();
         g.addNode("gamma");
         g.addNode("7");
         g.addNode("a b c");
@@ -64,7 +64,7 @@ public class GraphTest {
     // §2.1 — adding an edge between unknown nodes creates them (NetworkX).
     @Test
     public void addEdgeCreatesUnknownNodes() {
-        Graph g = Graph.directed();
+        Graph g #= Graph.directed();
         g.addEdge("x", "y");
         Assert.isTrue(g.hasNode("x"));
         Assert.isTrue(g.hasNode("y"));
@@ -75,7 +75,7 @@ public class GraphTest {
     // no implicit weight of 1. A missing attribute is loud, not 1.0.
     @Test
     public void weightsAreNamedAttributesAndMissingIsLoud() {
-        Graph g = Graph.undirected();
+        Graph g #= Graph.undirected();
         g.addEdge("a", "b");
         g.setEdgeAttr("a", "b", "weight", 2.5);
         Assert.isTrue(g.hasEdgeAttr("a", "b", "weight"));
@@ -84,7 +84,7 @@ public class GraphTest {
         g.addEdge("b", "c");
         Assert.isFalse(g.hasEdgeAttr("b", "c", "weight"));
         Assert.assertThrows(() -> {
-            Graph h = Graph.undirected();
+            Graph h #= Graph.undirected();
             h.addEdge("p", "q");
             float64 v = h.edgeAttr("p", "q", "weight");
         });
@@ -97,7 +97,7 @@ public class GraphTest {
     // the simple graph — a duplicate add UPDATES, silently altering nothing.
     @Test
     public void selfLoopsCountTwiceAndDuplicateEdgesUpdate() {
-        Graph g = Graph.undirected();
+        Graph g #= Graph.undirected();
         g.addEdge("a", "a");
         Assert.equals((int64) 1, g.edgeCount());
         Assert.equals((int64) 2, g.degree("a"));
@@ -113,7 +113,7 @@ public class GraphTest {
     // §2.7 — basic properties: counts, degree, density, neighbours.
     @Test
     public void basicPropertiesAreDirectlyAvailable() {
-        Graph g = Graph.directed();
+        Graph g #= Graph.directed();
         g.addEdge("a", "b");
         g.addEdge("a", "c");
         g.addEdge("b", "c");
@@ -127,7 +127,7 @@ public class GraphTest {
         float64 dens = g.density();
         Assert.isTrue(dens > 0.499 && dens < 0.501);
         // Neighbour iteration, deterministic (edge-insertion order).
-        ArrayList<String> nb = g.neighborsOf("a");
+        ArrayList<String> nb #= g.neighborsOf("a");
         Assert.equals((int64) 2, (int64) nb.count());
         Assert.equals("b", nb.get(0));
         Assert.equals("c", nb.get(1));
@@ -137,21 +137,21 @@ public class GraphTest {
     // attributes, and traversal can select by type. rag §10.8 depends on it.
     @Test
     public void typedEdgesSelectByType() {
-        Graph g = Graph.directed();
+        Graph g #= Graph.directed();
         g.addTypedEdge("mod.a", "mod.b", "imports");
         g.addTypedEdge("mod.a", "fn.f", "calls");
         g.addTypedEdge("mod.a", "doc.d", "links-to");
         g.addEdge("mod.a", "mod.c");                  // untyped
         Assert.equals("imports", g.edgeType("mod.a", "mod.b"));
         Assert.equals("", g.edgeType("mod.a", "mod.c"));
-        ArrayList<String> imp = g.neighborsByType("mod.a", "imports");
+        ArrayList<String> imp #= g.neighborsByType("mod.a", "imports");
         Assert.equals((int64) 1, (int64) imp.count());
         Assert.equals("mod.b", imp.get(0));
-        ArrayList<String> calls = g.neighborsByType("mod.a", "calls");
+        ArrayList<String> calls #= g.neighborsByType("mod.a", "calls");
         Assert.equals((int64) 1, (int64) calls.count());
         Assert.equals("fn.f", calls.get(0));
         // A type nobody used selects nothing rather than failing.
-        ArrayList<String> none = g.neighborsByType("mod.a", "cites");
+        ArrayList<String> none #= g.neighborsByType("mod.a", "cites");
         Assert.equals((int64) 0, (int64) none.count());
         // A typed edge still takes attributes.
         g.setEdgeAttr("mod.a", "mod.b", "weight", 3.0);
@@ -162,9 +162,9 @@ public class GraphTest {
     // either endpoint, so rag needs no second graph.
     @Test
     public void typedEdgesWorkUndirected() {
-        Graph g = Graph.undirected();
+        Graph g #= Graph.undirected();
         g.addTypedEdge("a", "b", "cites");
-        ArrayList<String> fromB = g.neighborsByType("b", "cites");
+        ArrayList<String> fromB #= g.neighborsByType("b", "cites");
         Assert.equals((int64) 1, (int64) fromB.count());
         Assert.equals("a", fromB.get(0));
     }

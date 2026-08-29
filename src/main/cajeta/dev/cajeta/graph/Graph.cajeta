@@ -108,8 +108,8 @@ public final class Graph {
             return this.idx.get(id);
         }
         int64 i = (int64) this.ids.count();
-        String k1 = Graph.own(id);
-        String k2 = Graph.own(id);
+        String k1 #= Graph.own(id);
+        String k2 #= Graph.own(id);
         this.ids.add(#k1);
         this.idx.put(#k2, i);
         ArrayList<int64> a = heap ArrayList<int64>();
@@ -236,8 +236,8 @@ public final class Graph {
             return this.typeIds.get(type);
         }
         int64 t = (int64) this.typeNames.count();
-        String n1 = Graph.own(type);
-        String n2 = Graph.own(type);
+        String n1 #= Graph.own(type);
+        String n2 #= Graph.own(type);
         this.typeNames.add(#n1);
         this.typeIds.put(#n2, t);
         return t;
@@ -292,8 +292,8 @@ public final class Graph {
                 col.add(Graph.nan());
                 i = i + 1;
             }
-            String n1 = Graph.own(name);
-            String n2 = Graph.own(name);
+            String n1 #= Graph.own(name);
+            String n2 #= Graph.own(name);
             this.attrNames.add(#n1);
             this.eattrs.put(#n2, #col);
         }
@@ -450,7 +450,7 @@ public final class Graph {
             if (!this.dir && d == i && s != i) {
                 other = s;
             }
-            String nb = Graph.own(this.ids.get((int32) other));
+            String nb #= Graph.own(this.ids.get((int32) other));
             out.add(#nb);
             k = k + 1;
         }
@@ -539,12 +539,12 @@ public final class Graph {
     public static #Graph fromTableAttrs(Table<?> t, String srcCol,
                                         String dstCol, boolean directed,
                                         String[] attrCols) {
-        Graph g = heap Graph(directed);
+        Graph g #= heap Graph(directed);
         int64 n = t.rowCount();
         int64 r = 0;
         while (r < n) {
-            String s = t.strAt(srcCol, r);
-            String d = t.strAt(dstCol, r);
+            String s #= t.strAt(srcCol, r);
+            String d #= t.strAt(dstCol, r);
             int64 e = g.addEdge(s, d);
             int64 c = 0;
             while (c < attrCols.count()) {

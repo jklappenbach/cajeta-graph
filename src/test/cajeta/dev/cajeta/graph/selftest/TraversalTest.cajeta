@@ -19,7 +19,7 @@ public class TraversalTest {
 
     /** The tools/fixtures/gen_traversal.py weighted fixture, unweighted here. */
     static #Graph fixture() {
-        Graph g = Graph.undirected();
+        Graph g #= Graph.undirected();
         g.addEdge("a", "b");
         g.addEdge("b", "c");
         g.addEdge("a", "d");
@@ -46,8 +46,8 @@ public class TraversalTest {
     // edge-insertion neighbour order. Repeated runs agree exactly.
     @Test
     public void bfsOrderIsDeterministic() {
-        Graph g = TraversalTest.fixture();
-        ArrayList<String> o = Traversal.bfs(g, "a");
+        Graph g #= TraversalTest.fixture();
+        ArrayList<String> o #= Traversal.bfs(g, "a");
         // a | b d | c e | f g   (h unreachable, excluded)
         Assert.equals((int64) 7, (int64) o.count());
         Assert.equals("a", o.get(0));
@@ -57,15 +57,15 @@ public class TraversalTest {
         Assert.equals("e", o.get(4));
         Assert.equals("f", o.get(5));
         Assert.equals("g", o.get(6));
-        ArrayList<String> o2 = Traversal.bfs(g, "a");
+        ArrayList<String> o2 #= Traversal.bfs(g, "a");
         TraversalTest.sameOrder(o, o2);
     }
 
     // 2.1.1 — DFS preorder, neighbours in edge-insertion order.
     @Test
     public void dfsOrderIsDeterministic() {
-        Graph g = TraversalTest.fixture();
-        ArrayList<String> o = Traversal.dfs(g, "a");
+        Graph g #= TraversalTest.fixture();
+        ArrayList<String> o #= Traversal.dfs(g, "a");
         // a b c f e d g  (preorder; h unreachable)
         Assert.equals((int64) 7, (int64) o.count());
         Assert.equals("a", o.get(0));
@@ -75,7 +75,7 @@ public class TraversalTest {
         Assert.equals("e", o.get(4));
         Assert.equals("d", o.get(5));
         Assert.equals("g", o.get(6));
-        ArrayList<String> o2 = Traversal.dfs(g, "a");
+        ArrayList<String> o2 #= Traversal.dfs(g, "a");
         TraversalTest.sameOrder(o, o2);
     }
 
@@ -83,12 +83,12 @@ public class TraversalTest {
     // Oracle: [['a','b','c'], ['d','e'], ['f']] (NetworkX 3.6.1).
     @Test
     public void connectedComponentsOnDisconnectedGraph() {
-        Graph g = Graph.undirected();
+        Graph g #= Graph.undirected();
         g.addEdge("a", "b");
         g.addEdge("b", "c");
         g.addEdge("d", "e");
         g.addNode("f");
-        int64[] lab = Components.connected(g);
+        int64[] lab #= Components.connected(g);
         Assert.equals((int64) 3, Components.componentCount(lab));
         // Same component ⇔ same label; labels are discovery-ordered.
         Assert.equals(lab[g.indexOf("a")], lab[g.indexOf("b")]);
@@ -107,19 +107,19 @@ public class TraversalTest {
     //         strong [['q'], ['v'], ['w'], ['x','y','z']] (NetworkX 3.6.1).
     @Test
     public void weakAndStrongComponentsAreDistinguished() {
-        Graph g = Graph.directed();
+        Graph g #= Graph.directed();
         g.addEdge("x", "y");
         g.addEdge("y", "z");
         g.addEdge("z", "x");
         g.addEdge("z", "w");
         g.addEdge("w", "q");
         g.addNode("v");
-        int64[] weak = Components.weaklyConnected(g);
+        int64[] weak #= Components.weaklyConnected(g);
         Assert.equals((int64) 2, Components.componentCount(weak));
         Assert.equals(weak[g.indexOf("x")], weak[g.indexOf("q")]);
         Assert.isTrue(weak[g.indexOf("x")] != weak[g.indexOf("v")]);
 
-        int64[] strong = Components.stronglyConnected(g);
+        int64[] strong #= Components.stronglyConnected(g);
         Assert.equals((int64) 4, Components.componentCount(strong));
         Assert.equals(strong[g.indexOf("x")], strong[g.indexOf("y")]);
         Assert.equals(strong[g.indexOf("y")], strong[g.indexOf("z")]);

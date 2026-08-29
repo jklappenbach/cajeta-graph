@@ -23,7 +23,7 @@ public class ShortestPathTest {
 
     /** The gen_traversal.py weighted fixture. */
     static #Graph fixture() {
-        Graph g = Graph.undirected();
+        Graph g #= Graph.undirected();
         g.addEdge("a", "b");
         g.setEdgeAttr("a", "b", "weight", 1.0);
         g.addEdge("b", "c");
@@ -59,8 +59,8 @@ public class ShortestPathTest {
     // 2.1.3 — unweighted shortest path by BFS matches NetworkX.
     @Test
     public void bfsShortestPathMatchesNetworkX() {
-        Graph g = ShortestPathTest.fixture();
-        PathResult r = ShortestPaths.bfsPath(g, "a", "g");
+        Graph g #= ShortestPathTest.fixture();
+        PathResult r #= ShortestPaths.bfsPath(g, "a", "g");
         Assert.isTrue(r.reachable());
         Assert.isTrue(r.distance() == 3.0);
         String[] want = heap String[4];
@@ -71,8 +71,8 @@ public class ShortestPathTest {
     // 2.1.4 — weighted shortest path by Dijkstra matches NetworkX.
     @Test
     public void dijkstraMatchesNetworkX() {
-        Graph g = ShortestPathTest.fixture();
-        PathResult r = ShortestPaths.dijkstra(g, "a", "g", "weight");
+        Graph g #= ShortestPathTest.fixture();
+        PathResult r #= ShortestPaths.dijkstra(g, "a", "g", "weight");
         Assert.isTrue(r.reachable());
         Assert.isTrue(r.distance() == 4.0);
         String[] want = heap String[4];
@@ -85,10 +85,10 @@ public class ShortestPathTest {
     @Test
     public void negativeWeightIsRejected() {
         Assert.assertThrows(() -> {
-            Graph g = Graph.undirected();
+            Graph g #= Graph.undirected();
             g.addEdge("a", "b");
             g.setEdgeAttr("a", "b", "weight", -1.0);
-            PathResult r = ShortestPaths.dijkstra(g, "a", "b", "weight");
+            PathResult r #= ShortestPaths.dijkstra(g, "a", "b", "weight");
         });
     }
 
@@ -97,32 +97,32 @@ public class ShortestPathTest {
     @Test
     public void missingWeightAttributeIsLoud() {
         Assert.assertThrows(() -> {
-            Graph g = Graph.undirected();
+            Graph g #= Graph.undirected();
             g.addEdge("a", "b");
-            PathResult r = ShortestPaths.dijkstra(g, "a", "b", "weight");
+            PathResult r #= ShortestPaths.dijkstra(g, "a", "b", "weight");
         });
     }
 
     // 2.1.6 — an unreachable target is an explicit answer.
     @Test
     public void unreachableIsExplicitNotInfinite() {
-        Graph g = ShortestPathTest.fixture();
-        PathResult r = ShortestPaths.bfsPath(g, "a", "h");
+        Graph g #= ShortestPathTest.fixture();
+        PathResult r #= ShortestPaths.bfsPath(g, "a", "h");
         Assert.isFalse(r.reachable());
         Assert.assertThrows(() -> {
-            Graph g2 = ShortestPathTest.fixture();
-            PathResult r2 = ShortestPaths.bfsPath(g2, "a", "h");
+            Graph g2 #= ShortestPathTest.fixture();
+            PathResult r2 #= ShortestPaths.bfsPath(g2, "a", "h");
             float64 d = r2.distance();
         });
-        PathResult rw = ShortestPaths.dijkstra(g, "a", "h", "weight");
+        PathResult rw #= ShortestPaths.dijkstra(g, "a", "h", "weight");
         Assert.isFalse(rw.reachable());
     }
 
     // 2.1.7 — all-pairs shortest paths match NetworkX (a-row + h-row).
     @Test
     public void allPairsMatchesNetworkX() {
-        Graph g = ShortestPathTest.fixture();
-        DistMatrix m = ShortestPaths.allPairs(g);
+        Graph g #= ShortestPathTest.fixture();
+        DistMatrix m #= ShortestPaths.allPairs(g);
         int64 a = g.indexOf("a");
         // a-row hops (a b c d e f g): 0 1 2 1 2 3 3; h unreachable.
         Assert.isTrue(m.distAt(a, g.indexOf("a")) == 0.0);
@@ -140,8 +140,8 @@ public class ShortestPathTest {
     // 2.1.7 — weighted all-pairs (repeated Dijkstra) matches NetworkX.
     @Test
     public void allPairsWeightedMatchesNetworkX() {
-        Graph g = ShortestPathTest.fixture();
-        DistMatrix m = ShortestPaths.allPairsWeighted(g, "weight");
+        Graph g #= ShortestPathTest.fixture();
+        DistMatrix m #= ShortestPaths.allPairsWeighted(g, "weight");
         int64 a = g.indexOf("a");
         // a-row (a b c d e f g): 0 1 3 4 5 6 4; h unreachable.
         Assert.isTrue(m.distAt(a, g.indexOf("b")) == 1.0);

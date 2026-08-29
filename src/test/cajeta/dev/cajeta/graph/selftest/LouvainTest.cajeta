@@ -44,7 +44,7 @@ public class LouvainTest {
 
     /** Two 5-cliques a0..a4, b0..b4 joined by a0-b0. */
     static #Graph barbell() {
-        Graph g = Graph.undirected();
+        Graph g #= Graph.undirected();
         String[] an = heap String[5];
         an[0] = "a0"; an[1] = "a1"; an[2] = "a2"; an[3] = "a3"; an[4] = "a4";
         String[] bn = heap String[5];
@@ -65,7 +65,7 @@ public class LouvainTest {
 
     /** Chain of three triangles bridged a3-b1, b3-c1. */
     static #Graph triangles() {
-        Graph g = Graph.undirected();
+        Graph g #= Graph.undirected();
         LouvainTest.cliqueOf(g, "a1", "a2", "a3");
         LouvainTest.cliqueOf(g, "b1", "b2", "b3");
         LouvainTest.cliqueOf(g, "c1", "c2", "c3");
@@ -93,12 +93,12 @@ public class LouvainTest {
     // 4.1.1 — modularity of known partitions matches NetworkX.
     @Test
     public void modularityMatchesNetworkX() {
-        Graph g = LouvainTest.barbell();
-        int64[] lab = LouvainTest.barbellKnown(g);
+        Graph g #= LouvainTest.barbell();
+        int64[] lab #= LouvainTest.barbellKnown(g);
         Assert.isTrue(LouvainTest.near(Modularity.of(g, lab),
             0.4523809524));
 
-        Graph t = LouvainTest.triangles();
+        Graph t #= LouvainTest.triangles();
         int64[] tl = heap int64[9];
         int64 i = 0;
         while (i < 9) {
@@ -125,7 +125,7 @@ public class LouvainTest {
     // §5.6 — weighted modularity computes over weights, not counts.
     @Test
     public void weightedModularityMatchesNetworkX() {
-        Graph g = Graph.undirected();
+        Graph g #= Graph.undirected();
         LouvainTest.cliqueOf(g, "p1", "p2", "p3");
         LouvainTest.cliqueOf(g, "q1", "q2", "q3");
         g.addEdge("p1", "q1");
@@ -152,10 +152,10 @@ public class LouvainTest {
     // 4.1.2 — obvious community structure is recovered exactly.
     @Test
     public void louvainRecoversObviousCommunities() {
-        Graph g = LouvainTest.barbell();
-        LouvainResult r = Louvain.run(g, (uint64) 42);
+        Graph g #= LouvainTest.barbell();
+        LouvainResult r #= Louvain.run(g, (uint64) 42);
         Assert.equals((int64) 2, r.communityCount());
-        int64[] lab = r.labels();
+        int64[] lab #= r.labels();
         // Every a* shares a0's label; every b* shares b0's; they differ.
         int64 la = lab[g.indexOf("a0")];
         int64 lb = lab[g.indexOf("b0")];
@@ -180,11 +180,11 @@ public class LouvainTest {
     // an unseeded result is not a fixture.
     @Test
     public void seededRunsReproduceExactly() {
-        Graph g = LouvainTest.triangles();
-        LouvainResult r1 = Louvain.run(g, (uint64) 42);
-        LouvainResult r2 = Louvain.run(g, (uint64) 42);
-        int64[] l1 = r1.labels();
-        int64[] l2 = r2.labels();
+        Graph g #= LouvainTest.triangles();
+        LouvainResult r1 #= Louvain.run(g, (uint64) 42);
+        LouvainResult r2 #= Louvain.run(g, (uint64) 42);
+        int64[] l1 #= r1.labels();
+        int64[] l2 #= r2.labels();
         int64 i = 0;
         while (i < g.nodeCount()) {
             Assert.equals(l1[i], l2[i]);
@@ -198,11 +198,11 @@ public class LouvainTest {
     // pins on this graph: γ 0.05 → 1, γ 1.0 → 3, γ 4.0 → 7.
     @Test
     public void resolutionChangesCountInTheExpectedDirection() {
-        Graph g = LouvainTest.triangles();
+        Graph g #= LouvainTest.triangles();
         int64[] none = heap int64[0];
-        LouvainResult lo = Louvain.full(g, (uint64) 42, 0.05, "", none);
-        LouvainResult mid = Louvain.full(g, (uint64) 42, 1.0, "", none);
-        LouvainResult hi = Louvain.full(g, (uint64) 42, 4.0, "", none);
+        LouvainResult lo #= Louvain.full(g, (uint64) 42, 0.05, "", none);
+        LouvainResult mid #= Louvain.full(g, (uint64) 42, 1.0, "", none);
+        LouvainResult hi #= Louvain.full(g, (uint64) 42, 4.0, "", none);
         Assert.equals((int64) 1, lo.communityCount());
         Assert.equals((int64) 3, mid.communityCount());
         Assert.isTrue(hi.communityCount() > (int64) 3);
@@ -214,10 +214,10 @@ public class LouvainTest {
     // recorded finding, not asserted here.)
     @Test
     public void agreesWithPythonLouvainOnTheSharedFixture() {
-        Graph g = LouvainTest.barbell();
-        LouvainResult r = Louvain.run(g, (uint64) 7);
+        Graph g #= LouvainTest.barbell();
+        LouvainResult r #= Louvain.run(g, (uint64) 7);
         Assert.equals((int64) 2, r.communityCount());
-        int64[] lab = r.labels();
+        int64[] lab #= r.labels();
         Assert.equals(lab[g.indexOf("a0")], lab[g.indexOf("a4")]);
         Assert.equals(lab[g.indexOf("b0")], lab[g.indexOf("b4")]);
         Assert.isTrue(lab[g.indexOf("a0")] != lab[g.indexOf("b0")]);
@@ -228,11 +228,11 @@ public class LouvainTest {
     // final partition; the last level IS the final partition.
     @Test
     public void dendrogramExposesMergeLevels() {
-        Graph g = LouvainTest.barbell();
-        LouvainResult r = Louvain.run(g, (uint64) 42);
+        Graph g #= LouvainTest.barbell();
+        LouvainResult r #= Louvain.run(g, (uint64) 42);
         Assert.isTrue(r.levelCount() >= (int64) 1);
-        int64[] last = r.labelsAtLevel(r.levelCount() - (int64) 1);
-        int64[] fin = r.labels();
+        int64[] last #= r.labelsAtLevel(r.levelCount() - (int64) 1);
+        int64[] fin #= r.labels();
         int64 i = 0;
         while (i < g.nodeCount()) {
             Assert.equals(fin[i], last[i]);
@@ -242,7 +242,7 @@ public class LouvainTest {
         int64 l = 0;
         int64 prev = g.nodeCount();
         while (l < r.levelCount()) {
-            int64 c = Louvain.countOf(r.labelsAtLevel(l));
+            int64 c #= Louvain.countOf(r.labelsAtLevel(l));
             Assert.isTrue(c <= prev);
             prev = c;
             l = l + 1;
@@ -253,9 +253,9 @@ public class LouvainTest {
     // optimum stays there with the pinned score.
     @Test
     public void initialPartitionIsRespected() {
-        Graph g = LouvainTest.barbell();
-        int64[] init = LouvainTest.barbellKnown(g);
-        LouvainResult r = Louvain.full(g, (uint64) 42, 1.0, "", init);
+        Graph g #= LouvainTest.barbell();
+        int64[] init #= LouvainTest.barbellKnown(g);
+        LouvainResult r #= Louvain.full(g, (uint64) 42, 1.0, "", init);
         Assert.equals((int64) 2, r.communityCount());
         Assert.isTrue(LouvainTest.near(r.modularity(), 0.4523809524));
     }
@@ -263,7 +263,7 @@ public class LouvainTest {
     // §5.6 — weighted Louvain names its attribute and uses weights.
     @Test
     public void weightedLouvainRecoversWeightedStructure() {
-        Graph g = Graph.undirected();
+        Graph g #= Graph.undirected();
         LouvainTest.cliqueOf(g, "p1", "p2", "p3");
         LouvainTest.cliqueOf(g, "q1", "q2", "q3");
         g.addEdge("p1", "q1");
@@ -274,9 +274,9 @@ public class LouvainTest {
         }
         g.setEdgeAttr("p1", "q1", "weight", 0.5);
         int64[] none = heap int64[0];
-        LouvainResult r = Louvain.full(g, (uint64) 42, 1.0, "weight", none);
+        LouvainResult r #= Louvain.full(g, (uint64) 42, 1.0, "weight", none);
         Assert.equals((int64) 2, r.communityCount());
-        int64[] lab = r.labels();
+        int64[] lab #= r.labels();
         Assert.equals(lab[g.indexOf("p1")], lab[g.indexOf("p3")]);
         Assert.equals(lab[g.indexOf("q1")], lab[g.indexOf("q3")]);
         Assert.isTrue(lab[g.indexOf("p1")] != lab[g.indexOf("q1")]);
@@ -288,9 +288,9 @@ public class LouvainTest {
     @Test
     public void directedGraphsAreLoud() {
         Assert.assertThrows(() -> {
-            Graph g = Graph.directed();
+            Graph g #= Graph.directed();
             g.addEdge("a", "b");
-            LouvainResult r = Louvain.run(g, (uint64) 1);
+            LouvainResult r #= Louvain.run(g, (uint64) 1);
         });
     }
 }

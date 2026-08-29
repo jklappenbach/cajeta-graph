@@ -162,7 +162,7 @@ public final class ShortestPaths {
         int64 i = 0;
         while (i < len) {
             String id = g.nodeAt(chain[i]);
-            String own = id.substring(0, (int32) id.count());
+            String own #= id.substring(0, (int32) id.count());
             nodes.add(#own);
             i = i + 1;
         }

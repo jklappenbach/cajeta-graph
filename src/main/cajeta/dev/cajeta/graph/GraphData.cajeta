@@ -24,7 +24,7 @@ public final class GraphData {
         int64 i = 0;
         while (i < g.nodeCount()) {
             String id = g.nodeAt(i);
-            String own = id.substring(0, (int32) id.count());
+            String own #= id.substring(0, (int32) id.count());
             out.add(#own);
             i = i + 1;
         }
@@ -75,7 +75,7 @@ public final class GraphData {
         while (e < m) {
             int64 t = g.edgeTypeIdOf(e);
             if (t >= 0) {
-                String name = g.typeNameOf(t);
+                String name #= g.typeNameOf(t);
                 out.add(#name);
             } else {
                 String untyped = "";
