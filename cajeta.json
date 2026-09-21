@@ -23,7 +23,7 @@
 
     "details": {
         "name":               "dev.cajeta.graph",
-        "version":            "0.1.0",
+        "version":            "0.1.1",
         "description":        "cajeta-graph — network analysis: graphs with typed edges, traversal and shortest paths, centrality incl. PageRank, and Louvain community detection",
         "license":            "Apache-2.0",
         "authors":            ["Julian Klappenbach"],

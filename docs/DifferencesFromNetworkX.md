@@ -69,7 +69,7 @@ finding to investigate, not automatically a bug.
   NetworkX defaults (0.85 / 100 / 1e-6) in its convenience forms.
 
 - **Dijkstra is a dense scan, not a priority queue.** O(n²) per source,
-  Θ(n³) for `allPairsWeighted` — deliberate simplicity for the 0.1.0
+  Θ(n³) for `allPairsWeighted` — deliberate simplicity for the 0.1
   small-graph scope; treat weighted all-pairs as a small-graph tool
   (n ≲ 500). Unweighted all-pairs is BFS-based, Θ(n·(n+m)), measured to
   n = 2000 in ~2 s ([scaling](scaling.md)).
@@ -83,7 +83,7 @@ finding to investigate, not automatically a bug.
 
 - **Clustering coefficient, diameter, average path length, degree
   distribution** — the spec's §6 structural measures, minus density,
-  did not ship in 0.1.0.
+  have not shipped in the 0.1 line.
 - **Multigraphs** (`nx.MultiGraph`/`MultiDiGraph`) — out of scope.
 - **Weighted traversal/centrality beyond the shipped forms** — no
   weighted betweenness or weighted closeness; eigenvector and PageRank

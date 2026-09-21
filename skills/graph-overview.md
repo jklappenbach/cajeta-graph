@@ -46,7 +46,7 @@ for an unknown id (no throw).
 ## Dead-ends (do not hunt)
 
 - No clustering coefficient / diameter / average path length / degree
-  distribution (spec §6 minus density did not ship in 0.1.0).
+  distribution (spec §6 minus density has not shipped in the 0.1 line).
 - No multigraph. No layout or drawing — positions belong to
   `dev.cajeta.chart`.
 - No Table join-back helper — join by index yourself.

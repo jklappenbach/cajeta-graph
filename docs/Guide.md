@@ -1,7 +1,7 @@
 # cajeta-graph guide
 
-Everything below is the shipped 0.1.0 surface; each behavior is pinned by
-the test suite (`src/test/cajeta`, 42 tests) or demonstrated by the
+Everything below is the shipped 0.1.1 surface; each behavior is pinned by
+the test suite (`src/test/cajeta`, 46 tests) or demonstrated by the
 self-checking [tour](Tour.md).
 
 ## The graph type
@@ -236,7 +236,7 @@ traversal orders are pinned; every source of randomness — Louvain visit
 order, betweenness sampling — takes an explicit `uint64` seed (Philox),
 so the same inputs and seeds are bit-identical on every machine.
 
-## What is not here (0.1.0)
+## What is not here (0.1.1)
 
 Stated so you don't hunt for it:
 
