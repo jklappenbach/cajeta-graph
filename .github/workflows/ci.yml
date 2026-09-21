@@ -30,15 +30,25 @@ permissions:
   contents: write
 
 env:
-  # Must match a release tag of jklappenbach/cajeta.
+  # Must match a release tag of jklappenbach/cajeta, and must agree with
+  # settings.toolchain.version in cajeta.json.
   #
   # This library depends on the stdlib alone (cajeta.collection,
   # cajeta.math, cajeta.nucleo.frame for edge-list construction). v0.17.0
-  # is the toolchain the 0.1.0 surface was developed and tested against;
-  # it also carries the deterministic source walk (v0.14.1) that makes a
-  # fresh-checkout CI build parse in the same order as a working copy —
-  # do not pin below it.
-  CAJETA_VERSION: v0.17.0
+  # was the toolchain the 0.1.0 surface was developed and tested against;
+  # it also carried the deterministic source walk (v0.14.1) that makes a
+  # fresh-checkout CI build parse in the same order as a working copy.
+  #
+  # That pin stopped being true and CI never noticed, because no run has
+  # been green on it since the traversal rebase: Core, Traversal and
+  # Components now take their engine from cajeta.collection.graph.IndexGraph,
+  # and the v0.17.0 stdlib has no such type — measured, it fails the build
+  # with CAJETA_ERROR_UNRESOLVED_TYPE at eight sites.
+  #
+  # v0.29.0 is the ecosystem's current release and is what the tree is
+  # gated on. It is not a floor of its own: measured, the suite is 49
+  # passed, 0 failed, 1 skipped on v0.28.0 and v0.29.0 alike.
+  CAJETA_VERSION: v0.29.0
 
 jobs:
   build-test:
