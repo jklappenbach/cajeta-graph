@@ -23,7 +23,7 @@
 
     "details": {
         "name":               "dev.cajeta.graph",
-        "version":            "0.1.3",
+        "version":            "0.1.4",
         "description":        "cajeta-graph — network analysis: graphs with typed edges, traversal and shortest paths, centrality incl. PageRank, and Louvain community detection",
         "license":            "Apache-2.0",
         "authors":            ["Julian Klappenbach"],
@@ -55,8 +55,8 @@
             // installed until this commit, so the workflow's pin was a
             // false claim about what builds.
             //
-            // Raised to 0.36.0 with the fleet republish.
-            "version": "0.36.0"
+            // Raised to 0.38.0 with the fleet republish.
+            "version": "0.38.0"
         },
 
         // Pure in-memory graph algorithms — no filesystem or network use.
@@ -76,9 +76,9 @@
         // parameter in a field: both v0.28.0 and v0.29.0 stop the build
         // with CAJETA_ERROR_CAPTURED_BORROW_PARAM. 0.3.0 carries the fix,
         // so this raise is forced by the dependency rather than by the
-        // toolchain pin above. 0.3.4 is the unit release built for v0.36.0.
+        // toolchain pin above. 0.3.5 is the unit release built for v0.38.0.
         "dev-dependencies": {
-            "dev.cajeta.unit": "0.3.4"
+            "dev.cajeta.unit": "0.3.5"
         },
 
         "repositories": [

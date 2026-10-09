@@ -48,8 +48,8 @@ env:
   # v0.29.0 is the ecosystem's current release and is what the tree is
   # gated on. It is not a floor of its own: measured, the suite is 49
   # passed, 0 failed, 1 skipped on v0.28.0 and v0.29.0 alike.
-  # Raised to v0.36.0 with the fleet republish.
-  CAJETA_VERSION: v0.36.0
+  # Raised to v0.38.0 with the fleet republish.
+  CAJETA_VERSION: v0.38.0
 
 jobs:
   build-test:
